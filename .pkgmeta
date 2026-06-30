@@ -1,0 +1,21 @@
+# .pkgmeta — BigWigs packager manifest (https://github.com/BigWigsMods/packager)
+# Drives .github/workflows/release.yml: on a version tag the packager substitutes
+# @project-version@ in SnakeSays.toc from the tag, assembles the addon zip, attaches
+# it to a GitHub release, and — once the storefront secret/ID exist — uploads to
+# CurseForge.
+
+# The packaged top-level folder. MUST match the .toc base name (SnakeSays.toc) so WoW
+# loads it.
+package-as: SnakeSays
+
+# No third-party libraries are vendored, so a lib-less ("-nolib") zip is meaningless.
+enable-nolib-creation: no
+
+# Dev-only files that must NOT ship to users. (Media/ is intentionally kept — the wedge
+# textures are part of the addon. The packager already drops .git and strips .pkgmeta.)
+ignore:
+  - .github
+  - .luacheckrc
+  - .gitignore
+  - .claude
+  - tools

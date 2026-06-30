@@ -93,6 +93,7 @@ HUD.lua         the circular board, sequence row, reset button, drag/lock
 Options.lua     AddOns settings page (canvas): marker picker, keybinds, show/lock
 Commands.lua    keybind globals, binding labels, /ss hub
 Bindings.xml    the five keybinding definitions
+snakesays.tga   addon icon (AddOns list + AddOn Compartment button)
 Media/          wedge-{n,e,s,w}.tga — the four pre-oriented wedge shapes
 ```
 

@@ -27,6 +27,16 @@ function SnakeSays_Reset()
 	ns.Seq.Reset()
 end
 
+-- AddOn Compartment button (the icon on the minimap compartment, see the .toc).
+-- Left-click opens options; right-click toggles the HUD.
+function SnakeSays_OnCompartment(_, button)
+	if button == "RightButton" then
+		ns.SetShown(not ns.IsShown())
+	else
+		ns.Options.Open()
+	end
+end
+
 -- ---------------------------------------------------------------------------
 -- Slash commands
 -- ---------------------------------------------------------------------------

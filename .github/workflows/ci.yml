@@ -1,0 +1,19 @@
+name: CI
+
+# Lints on every push and pull request. (No busted job — SnakeSays ships no tests.)
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    name: Luacheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Self-contained luacheck action (same one WeakAuras uses). Reads .luacheckrc.
+      - name: Luacheck
+        uses: nebularg/actions-luacheck@v1
+        with:
+          args: "--no-color -q"
+          annotate: warning

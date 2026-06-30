@@ -1,0 +1,35 @@
+name: Release
+
+# Cut a release when a version tag is pushed, e.g.:
+#   git tag v0.1.0 && git push origin v0.1.0
+# The BigWigs packager reads .pkgmeta, substitutes @project-version@ etc. in the .toc
+# from the tag, builds the zip, and creates a GitHub release with it attached.
+#
+# Storefront uploads are OPT-IN and safe to leave un-wired for now: with no CF_API_KEY
+# secret (and no `## X-Curse-Project-ID:` in SnakeSays.toc) the packager simply skips
+# CurseForge and still produces the zip + GitHub release. Add the secret + project ID
+# when the CurseForge page exists and tagging will start publishing there too.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write   # required for the default GITHUB_TOKEN to create the release
+
+jobs:
+  release:
+    name: Package & release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history + tags so the packager can build the changelog
+
+      - name: Package and release
+        uses: BigWigsMods/packager@v2
+        env:
+          GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}   # provided automatically → GitHub release
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}       # add this secret when the CF page exists
+          # WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
+          # WOWI_API_TOKEN: ${{ secrets.WOWI_API_TOKEN }}
