@@ -11,8 +11,8 @@ read_globals = {
 	"C_Timer", "C_Map",
 	"Settings",
 	"GetBindingKey", "GetBindingText", "SetBinding", "SaveBindings", "GetCurrentBindingSet",
-	"IsAltKeyDown", "IsControlKeyDown", "IsShiftKeyDown",
-	"wipe",
+	"IsAltKeyDown", "IsControlKeyDown", "IsShiftKeyDown", "IsMouseButtonDown",
+	"wipe", "strtrim",
 }
 
 exclude_files = {

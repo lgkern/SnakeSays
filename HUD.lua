@@ -44,7 +44,7 @@ local WEDGES = {
 	W = { file = "wedge-w", point = "LEFT",   ox =  24, oy =  0, insets = { 0,    INNER, SIDE,  SIDE  } },
 }
 
-local frame, circle, row, resetBtn
+local frame, circle, row
 local buttons = {}     -- dir -> wedge button
 local seqIcons = {}    -- pooled sequence-row textures
 
@@ -124,8 +124,6 @@ local function buildResetButton()
 		bg:SetColorTexture(0, 0, 0, 0.45)
 		GameTooltip:Hide()
 	end)
-
-	resetBtn = b
 end
 
 local function buildMover()
