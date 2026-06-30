@@ -1,0 +1,16 @@
+## Interface: 120007
+## Title: SnakeSays
+## Notes: Simon-Says HUD for recording and replaying boss safe-quadrant sequences.
+## Author: Lucas
+## Version: @project-version@
+## SavedVariables: SnakeSaysDB
+## X-Category: Combat
+
+# Load order: core state -> sequence -> HUD/options -> commands & keybinds.
+Core.lua
+Sequence.lua
+HUD.lua
+Options.lua
+Commands.lua
+
+Bindings.xml

@@ -1,0 +1,17 @@
+<Bindings>
+	<Binding name="SNAKESAYS_NORTH" category="BINDING_HEADER_SNAKESAYS">
+		SnakeSays_Press("N")
+	</Binding>
+	<Binding name="SNAKESAYS_EAST" category="BINDING_HEADER_SNAKESAYS">
+		SnakeSays_Press("E")
+	</Binding>
+	<Binding name="SNAKESAYS_SOUTH" category="BINDING_HEADER_SNAKESAYS">
+		SnakeSays_Press("S")
+	</Binding>
+	<Binding name="SNAKESAYS_WEST" category="BINDING_HEADER_SNAKESAYS">
+		SnakeSays_Press("W")
+	</Binding>
+	<Binding name="SNAKESAYS_RESET" category="BINDING_HEADER_SNAKESAYS">
+		SnakeSays_Reset()
+	</Binding>
+</Bindings>
