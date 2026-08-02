@@ -1,4 +1,4 @@
-## Interface: 120100
+## Interface: 120007, 120100
 ## Title: SnakeSays
 ## Notes: Simon-Says HUD for recording and replaying boss safe-quadrant sequences.
 ## Author: Lucas
