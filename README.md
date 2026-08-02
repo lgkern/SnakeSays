@@ -168,6 +168,12 @@ how many TTS voices are installed.
 - **During the replay** - speak the safe quadrant on/off, call things by colour
   or by marker, voice volume, let calls overlap, bell on/off, on-screen call
   on/off, next-up line on/off, radar on/off, blink the safe slice on/off.
+- **Window size** - one slider each for the board, the radar and the on-screen
+  call, 50% to 200%. They're separate on purpose: the board is a click target,
+  the radar is read out of the corner of your eye, and the call is read head-on,
+  so one size for all three is usually wrong for two of them. Resizing also
+  scales the window's offset from whatever it's anchored to, so it can shift a
+  little as it grows - nudge it back, or `/ss recenter`.
 
 ## Slash commands
 

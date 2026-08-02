@@ -302,7 +302,18 @@ local function build()
 	end)
 
 	Radar.ApplyPosition()
+	Radar.ApplyScale()
 	Radar.Update()
+end
+
+-- The radar frame, for anything that wants to read or sit against it.
+function Radar.GetFrame()
+	return frame
+end
+
+function Radar.ApplyScale()
+	if not frame then return end
+	frame:SetScale(ns.GetRadarScale())
 end
 
 -- ---------------------------------------------------------------------------

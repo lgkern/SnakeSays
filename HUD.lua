@@ -214,6 +214,7 @@ local function build()
 	ns.Seq.OnChange(HUD.RenderSequence)
 	HUD.Refresh()
 	HUD.ResetPosition()
+	HUD.ApplyScale()
 	HUD.ApplyShown()
 	HUD.ApplyLock()
 end
@@ -287,6 +288,14 @@ end
 -- The board frame, for anything that wants to sit against it.
 function HUD.GetFrame()
 	return frame
+end
+
+-- The player's chosen board size. Scaling the whole frame keeps the wedges,
+-- their click areas and the sequence row in proportion, which laying it out
+-- again at a new pixel size would not.
+function HUD.ApplyScale()
+	if not frame then return end
+	frame:SetScale(ns.GetHUDScale())
 end
 
 function HUD.ApplyLock()

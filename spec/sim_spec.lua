@@ -91,6 +91,38 @@ describe("demo practice run", function()
 		assert.equals(3, #wow.spoken)
 	end)
 
+	-- A doubled call means the right move is to stand still, which is the one
+	-- thing a drill can't usefully rehearse -- and looks like a missed call.
+	it("never calls the same quadrant twice in a row", function()
+		local ns = outside(enc.setup("auto"))
+		enc.placeIn(ns, "N")
+
+		for _ = 1, 50 do
+			ns.Sim.StartDemo(7)
+			local run = ns.Sim.lastRun
+			assert.equals(7, #run)
+			for i = 2, #run do
+				assert.are_not.equals(run[i - 1], run[i])
+			end
+			ns.Sim.Stop(true)
+		end
+	end)
+
+	it("still uses every quadrant across a long enough run", function()
+		local ns = outside(enc.setup("auto"))
+		enc.placeIn(ns, "N")
+
+		local seen = {}
+		for _ = 1, 50 do
+			ns.Sim.StartDemo(7)
+			for _, quadrant in ipairs(ns.Sim.lastRun) do seen[quadrant] = true end
+			ns.Sim.Stop(true)
+		end
+		for _, quadrant in ipairs(ns.QUADRANTS) do
+			assert.is_true(seen[quadrant] == true)
+		end
+	end)
+
 	it("honours a longer phase", function()
 		local ns = outside(enc.setup("auto"))
 		enc.placeIn(ns, "N")

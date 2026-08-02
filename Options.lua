@@ -40,6 +40,7 @@ local styleButtons = {}   -- announce style key -> radio button
 local showCB, lockCB, autoResetCB, timerSlider, timerValue, restrictCB, blockInputCB
 local ttsCB, overlapCB, bellCB, popupCB, subtitleCB, radarCB, blinkCB
 local volumeSlider, volumeValue
+local scaleSliders = {}   -- the three window-size sliders, refreshed together
 local capture             -- fullscreen key-capture overlay (created on demand)
 local pendingButton       -- the key box whose binding we're setting
 
@@ -236,6 +237,40 @@ local function buildCheckbox(label, y, getter, setter, x)
 end
 
 -- ---------------------------------------------------------------------------
+-- Window sizes
+--
+-- One slider per window. They read as percentages because that is what the
+-- player is judging ("a bit bigger"), while the stored value is the frame scale
+-- the game wants.
+-- ---------------------------------------------------------------------------
+
+local function buildScaleSlider(label, x, y, getter, setter)
+	local slider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
+	slider:SetWidth(180)
+	slider:SetPoint("TOPLEFT", panel, "TOPLEFT", x, y)
+	slider:SetMinMaxValues(ns.SCALE_MIN, ns.SCALE_MAX)
+	slider:SetValueStep(0.05)
+	slider:SetObeyStepOnDrag(true)
+	if slider.Low then slider.Low:SetText(math.floor(ns.SCALE_MIN * 100) .. "%") end
+	if slider.High then slider.High:SetText(math.floor(ns.SCALE_MAX * 100) .. "%") end
+	if slider.Text then slider.Text:SetText(label) end
+
+	local value = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	value:SetPoint("LEFT", slider, "RIGHT", 14, 0)
+
+	slider:SetScript("OnValueChanged", function(_, v)
+		local percent = math.floor(v * 20 + 0.5) * 5   -- snap to the 5% step
+		setter(percent / 100)
+		value:SetText(percent .. "%")
+	end)
+
+	slider.getter = getter
+	slider.valueText = value
+	scaleSliders[#scaleSliders + 1] = slider
+	return slider
+end
+
+-- ---------------------------------------------------------------------------
 -- Replay announcements
 --
 -- Their own column on the right: they all concern what happens during the
@@ -314,6 +349,14 @@ local function buildAnnounceColumn()
 	local moveHint = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 	moveHint:SetPoint("TOPLEFT", panel, "TOPLEFT", ANNOUNCE_X + 24, -372)
 	moveHint:SetText("Unlock the HUD to drag the call and the radar.")
+
+	local sizeHeading = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	sizeHeading:SetPoint("TOPLEFT", panel, "TOPLEFT", ANNOUNCE_X, -398)
+	sizeHeading:SetText("Window size")
+
+	buildScaleSlider("Board", ANNOUNCE_X + 28, -428, ns.GetHUDScale, ns.SetHUDScale)
+	buildScaleSlider("Position radar", ANNOUNCE_X + 28, -466, ns.GetRadarScale, ns.SetRadarScale)
+	buildScaleSlider("On-screen call", ANNOUNCE_X + 28, -504, ns.GetPopupScale, ns.SetPopupScale)
 end
 
 -- ---------------------------------------------------------------------------
@@ -457,6 +500,12 @@ function Options.Refresh()
 	local volume = ns.GetTTSVolume()
 	volumeSlider:SetValue(volume)
 	volumeValue:SetText(tostring(volume))
+
+	for _, slider in ipairs(scaleSliders) do
+		local scale = slider.getter()
+		slider:SetValue(scale)                                     -- fires OnValueChanged
+		slider.valueText:SetText(math.floor(scale * 100 + 0.5) .. "%")
+	end
 
 	-- The voice controls only mean anything while the voice is on, and the
 	-- next-up line only while the popup is drawn at all.

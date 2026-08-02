@@ -139,6 +139,14 @@ local function buildPopup()
 	end)
 
 	Announce.ApplyPopupPosition()
+	Announce.ApplyScale()
+end
+
+-- The player's chosen size for the call. Scaling the frame takes the icons with
+-- the words, so "{cross} Red" stays legible as one thing at any size.
+function Announce.ApplyScale()
+	if not popup then return end
+	popup:SetScale(ns.GetPopupScale())
 end
 
 function Announce.ApplyPopupPosition()
@@ -204,6 +212,7 @@ local function hideCall()
 end
 
 -- Test seams / external readers.
+function Announce.GetPopup() return popup end
 function Announce.IsPopupShown() return popup ~= nil and popup:IsShown() end
 function Announce.PopupText() return popup and popup.main:GetText() or "" end
 function Announce.PopupSubtitle() return popup and popup.subtitle:GetText() or "" end

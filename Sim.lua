@@ -133,10 +133,21 @@ end
 -- Demo run: made-up sequence, no running about required
 -- ---------------------------------------------------------------------------
 
+-- No wave repeats the one before it. A doubled call is the one case where
+-- following the addon correctly means standing still, which is both the least
+-- useful thing to rehearse and the easiest to misread as a missed call. The
+-- recorder still handles a real doubled wave; this is only about what makes a
+-- worthwhile drill.
 local function makeRun(waves)
 	local run = {}
+	local previous
 	for i = 1, waves do
-		run[i] = ns.QUADRANTS[math.random(#ns.QUADRANTS)]
+		local choices = {}
+		for _, quadrant in ipairs(ns.QUADRANTS) do
+			if quadrant ~= previous then choices[#choices + 1] = quadrant end
+		end
+		previous = choices[math.random(#choices)]
+		run[i] = previous
 	end
 	return run
 end

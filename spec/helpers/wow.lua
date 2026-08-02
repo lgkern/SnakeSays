@@ -84,7 +84,7 @@ local stubbed = {
 	"SetJustifyH", "SetJustifyV", "SetShadowOffset", "SetShadowColor",
 	"SetFont", "SetSpacing", "SetWordWrap", "SetNonSpaceWrap", "SetMaxLines",
 	"SetMinMaxValues", "SetValueStep", "SetObeyStepOnDrag", "SetOrientation",
-	"SetAlpha", "SetScale", "SetIgnoreParentScale", "SetIgnoreParentAlpha",
+	"SetAlpha", "SetIgnoreParentScale", "SetIgnoreParentAlpha",
 	"SetParent", "Raise", "Lower", "SetAttribute", "SetID",
 	"Click", "LockHighlight", "UnlockHighlight",
 }
@@ -133,6 +133,9 @@ function frameProto:GetChecked() return self._checked and true or false end
 
 function frameProto:SetRotation(r) self._rotation = r end
 function frameProto:GetRotation() return self._rotation or 0 end
+
+function frameProto:SetScale(s) self._scale = s end
+function frameProto:GetScale() return self._scale or 1 end
 
 function frameProto:SetEnabled(v) self._enabled = v and true or false end
 function frameProto:Enable() self._enabled = true end

@@ -105,6 +105,11 @@ local DEFAULTS = {
 	popupPosition = nil,      -- nil => centre top
 	bellEnabled = true,
 	targetBlink = true,       -- pulse the safe slice until the player is standing in it
+
+	-- Window sizes, as frame-scale multipliers (1 = as shipped).
+	hudScale = 1,
+	radarScale = 1,
+	popupScale = 1,
 }
 
 -- Lazy DB resolver (the SV-timing rule above). Safe to call any time after
@@ -338,6 +343,46 @@ function ns.QuadrantMarkup(quadrant, size)
 	return ns.MarkerIconMarkup(marker, size) .. " " .. ns.QuadrantLabel(quadrant)
 end
 
+-- ---------------------------------------------------------------------------
+-- Window sizes
+--
+-- One multiplier per window rather than one shared one: the board is a click
+-- target, the radar is read at a glance out of the corner of the eye, and the
+-- on-screen call is read head-on. A single size that suits one of them is
+-- usually wrong for the other two.
+--
+-- Stored as a scale factor and applied with SetScale, so nothing here has to
+-- re-lay-out: the frames keep their proportions and their anchors.
+-- ---------------------------------------------------------------------------
+
+ns.SCALE_MIN, ns.SCALE_MAX = 0.5, 2.0
+
+function ns.ClampScale(v)
+	v = tonumber(v)
+	if not v then return 1 end
+	if v < ns.SCALE_MIN then return ns.SCALE_MIN end
+	if v > ns.SCALE_MAX then return ns.SCALE_MAX end
+	return v
+end
+
+function ns.GetHUDScale() return ns.ClampScale(db().hudScale or DEFAULTS.hudScale) end
+function ns.SetHUDScale(v)
+	db().hudScale = ns.ClampScale(v)
+	if ns.HUD then ns.HUD.ApplyScale() end
+end
+
+function ns.GetRadarScale() return ns.ClampScale(db().radarScale or DEFAULTS.radarScale) end
+function ns.SetRadarScale(v)
+	db().radarScale = ns.ClampScale(v)
+	if ns.Radar then ns.Radar.ApplyScale() end
+end
+
+function ns.GetPopupScale() return ns.ClampScale(db().popupScale or DEFAULTS.popupScale) end
+function ns.SetPopupScale(v)
+	db().popupScale = ns.ClampScale(v)
+	if ns.Announce then ns.Announce.ApplyScale() end
+end
+
 function ns.GetPosition() return db().position end
 function ns.SavePosition(point, relPoint, x, y)
 	db().position = { point = point, relPoint = relPoint, x = x, y = y }
@@ -372,6 +417,9 @@ boot:SetScript("OnEvent", function(_, _, name)
 	d.ttsVoice = d.ttsVoice or DEFAULTS.ttsVoice
 	d.ttsVolume = d.ttsVolume or DEFAULTS.ttsVolume
 	d.announceStyle = d.announceStyle or DEFAULTS.announceStyle
+	for _, key in ipairs({ "hudScale", "radarScale", "popupScale" }) do
+		d[key] = ns.ClampScale(d[key] or DEFAULTS[key])
+	end
 	d.markers = d.markers or {}
 	for _, q in ipairs(ns.QUADRANTS) do
 		d.markers[q] = d.markers[q] or DEFAULTS.markers[q]
