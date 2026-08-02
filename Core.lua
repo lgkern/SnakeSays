@@ -41,22 +41,33 @@ function ns.GetMarker(id)
 end
 
 -- ---------------------------------------------------------------------------
--- The boss room, in world yards.
+-- The boss room.
 --
--- UnitPosition returns (a, b, z, instanceID) where axis `a` points NORTH and
--- axis `b` points WEST. The centre below was measured standing in the middle of
--- the room; `/ss measure` overwrites it into SavedVariables if the live values
--- ever drift from these.
+-- Reference geometry, in world yards on the axes UnitPosition uses: `a` runs
+-- north, `b` runs west. The room is 111 yd north-south by 77 yd east-west, and
+-- is modelled as a circle on the narrower axis -- players can and do stand well
+-- north or south of that circle, so anything drawing the room has to cope with
+-- being outside it rather than assume nobody is.
+--
+-- `center` is the author's own standing measurement. It is reference only: the
+-- centre the addon *reasons* from is whatever this client recorded with
+-- `/ss measure`, and until that has been run ns.GetRoomCenter() returns nil and
+-- everything that needs a room frame declines to guess.
 -- ---------------------------------------------------------------------------
 
 ns.ROOM = {
 	instanceMapID = 3079,
 	uiMapID       = 2634,
-	centerA       = 181.70,
-	centerB       = 0.60,
-	radius        = 36,     -- wall distance from centre (yd)
-	pad           = 15,     -- extra view drawn beyond the wall (yd)
+
+	center     = { a = 181.80, b = 0.60 },
+	radius     = 38.5,   -- yards, half the room's narrow (east-west) span
+	drawMargin = 10,     -- yards of floor shown past the wall by the room view
 }
+
+-- The delve this all happens in. Matched on the name as well as the instance id
+-- because ids get renumbered between builds, and an unrecognised delve is one
+-- where the addon silently does nothing at all.
+local DELVE_ZONE = "Venomfall Deeps"
 
 -- ---------------------------------------------------------------------------
 -- Operating modes.
@@ -222,13 +233,23 @@ function ns.SetVisibilityOverride(v)
 	if ns.Radar then ns.Radar.ApplyShown() end
 end
 
--- Are we standing in the boss' delve? The instance id is the reliable signal;
--- the zone name is a fallback in case the instance is renumbered.
+-- Whether we are standing in Venomfall Deeps. Two independent signals, either
+-- of which is enough: the instance id the client reports, and the zone name.
+-- Both reads are guarded, because a location gate that throws is worse than one
+-- that says "no".
 function ns.InDelve()
-	local ok, _, _, _, _, _, _, _, instanceMapID = pcall(GetInstanceInfo)
-	if ok and instanceMapID == ns.ROOM.instanceMapID then return true end
+	local ok, name, _, _, _, _, _, _, instanceID = pcall(GetInstanceInfo)
+	if ok then
+		if instanceID == ns.ROOM.instanceMapID then return true end
+		if type(name) == "string" and name:find(DELVE_ZONE, 1, true) then return true end
+	end
+
 	local okZone, zone = pcall(GetZoneText)
-	return (okZone and zone == "Venomfall Deeps") or false
+	if okZone and type(zone) == "string" and zone:find(DELVE_ZONE, 1, true) then
+		return true
+	end
+
+	return false
 end
 
 -- ---------------------------------------------------------------------------

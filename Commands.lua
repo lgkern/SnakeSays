@@ -125,8 +125,11 @@ local function statusCommand()
 			or (distance and (" (centre, %.1f yd)"):format(distance) or "")))
 
 	local center = ns.GetRoomCenter()
-	out(("  room centre: %.2f, %.2f%s"):format(center.a, center.b,
-		ns.db().roomCenter and " (measured)" or " (built in)"))
+	if center then
+		out(("  room centre: %.2f, %.2f (measured)"):format(center.a, center.b))
+	else
+		out("  room centre: |cffff5555not measured|r - stand in the middle and run /ss measure")
+	end
 	out("  facing readable: " .. yes(ns.Position.Facing() ~= nil))
 
 	out(("  board: shown=%s visible=%s | radar: on=%s visible=%s"):format(
@@ -137,6 +140,11 @@ local function statusCommand()
 	out(("  encounter: armed=%s recording=%s replaying=%s step=%d of %d"):format(
 		yes(ns.Detector.IsArmed()), yes(ns.Detector.IsRecording()),
 		yes(ns.Detector.IsReplaying()), ns.Detector.EchoIndex(), ns.Seq.Count()))
+	local grid = ns.Detector.ActiveGrid()
+	if grid then
+		out(("  round in progress: wave %d of %d, %.3fs slots (%s)"):format(
+			grid.wave, grid.waves, grid.slot, grid.difficulty or "difficulty unknown"))
+	end
 	out("  practice run going: " .. yes(ns.Sim.IsRunning()))
 
 	local voices = C_VoiceChat and C_VoiceChat.GetTtsVoices and C_VoiceChat.GetTtsVoices()

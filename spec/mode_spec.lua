@@ -73,11 +73,12 @@ describe("mode prompt", function()
 	end)
 
 	it("does not appear outside the delve", function()
-		addon.boot()
+		local ns = addon.boot()
 		wow.uiMapID = 84         -- Stormwind
 		wow.instanceMapID = 0
 		wow.zoneText = "Stormwind City"
 		wow.fire("ZONE_CHANGED_NEW_AREA")
+		assert.is_false(ns.InDelve())
 		assert.equals(0, #wow.popups)
 	end)
 

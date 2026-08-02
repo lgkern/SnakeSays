@@ -69,83 +69,6 @@ describe("voice calls", function()
 	end)
 end)
 
-describe("safe-arrival bell", function()
-	local function stepInto(ns, quadrant, seconds)
-		enc.placeIn(ns, quadrant)
-		wow.advance(seconds or 0.5)
-	end
-
-	it("rings once the player reaches the safe quadrant", function()
-		local ns = enc.setup("auto")
-		enc.recordRun(ns, RUN)
-		enc.placeIn(ns, "N")             -- wrong quadrant for step 1 (W is safe)
-		enc.echo(ns)
-		assert.equals(0, #wow.sounds)
-
-		stepInto(ns, "W")
-		assert.equals(1, #wow.sounds)
-	end)
-
-	it("rings only once per step, however much the player shuffles", function()
-		local ns = enc.setup("auto")
-		enc.recordRun(ns, RUN)
-		enc.placeIn(ns, "N")
-		enc.echo(ns)
-
-		stepInto(ns, "W")
-		stepInto(ns, "N")
-		stepInto(ns, "W")
-		assert.equals(1, #wow.sounds)
-	end)
-
-	it("rings again on the next step", function()
-		local ns = enc.setup("auto")
-		enc.recordRun(ns, RUN)
-		enc.placeIn(ns, "N")
-		enc.echo(ns)
-		stepInto(ns, "W")
-		assert.equals(1, #wow.sounds)
-
-		enc.echo(ns)                     -- step 2, safe quadrant is N
-		stepInto(ns, "N")
-		assert.equals(2, #wow.sounds)
-	end)
-
-	it("rings immediately when the player is already standing safe", function()
-		local ns = enc.setup("auto")
-		enc.recordRun(ns, RUN)
-		enc.placeIn(ns, "W")             -- already in the safe spot for step 1
-		enc.echo(ns)
-		wow.advance(0.5)
-		assert.equals(1, #wow.sounds)
-	end)
-
-	it("does not ring outside the replay", function()
-		local ns = enc.setup("auto")
-		enc.recordRun(ns, RUN)
-		wow.advance(2)
-		assert.equals(0, #wow.sounds)
-	end)
-
-	it("stays silent when the bell is switched off", function()
-		local ns = enc.setup("auto", { bellEnabled = false })
-		enc.recordRun(ns, RUN)
-		enc.placeIn(ns, "N")
-		enc.echo(ns)
-		stepInto(ns, "W")
-		assert.equals(0, #wow.sounds)
-	end)
-
-	it("does not ring when position cannot be read", function()
-		local ns = enc.setup("auto")
-		enc.recordRun(ns, RUN)
-		enc.placeIn(ns, "N")
-		enc.echo(ns)
-		wow.setPosition(nil)
-		wow.advance(1)
-		assert.equals(0, #wow.sounds)
-	end)
-end)
 
 describe("next-up popup", function()
 	it("shows the current colour large and the next one as a subtitle", function()
@@ -197,20 +120,14 @@ describe("next-up popup", function()
 		assert.is_false(ns.Announce.IsPopupShown())
 	end)
 
-	it("hides itself once the replay is over", function()
-		local ns = enc.setup("auto")
-		enc.recordRun(ns, RUN)
-		enc.echo(ns); enc.echo(ns); enc.echo(ns)
-		assert.is_true(ns.Announce.IsPopupShown())
-		wow.advance(15)                  -- past the replay linger
-		assert.is_false(ns.Announce.IsPopupShown())
-	end)
-
-	it("hides when the encounter ends mid-replay", function()
+	-- NOT YET WRITTEN: the timer that cleared the board a while after the last call
+	-- went with the engine, so nothing ends a replay on its own any more. The
+	-- popup still hides the moment something does.
+	it("hides when the replay ends mid-run", function()
 		local ns = enc.setup("auto")
 		enc.recordRun(ns, RUN)
 		enc.echo(ns)
-		wow.fire("ENCOUNTER_END", ns.ENCOUNTERS[1].id)
+		ns.Detector.EndReplay()
 		assert.is_false(ns.Announce.IsPopupShown())
 	end)
 

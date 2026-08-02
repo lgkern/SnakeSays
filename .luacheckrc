@@ -8,10 +8,11 @@ globals = { "SnakeSaysDB", "SlashCmdList", "StaticPopupDialogs" }
 -- WoW API surface the addon reads.
 read_globals = {
 	"CreateFrame", "UIParent", "GameTooltip",
-	"C_Timer", "C_Map", "C_VoiceChat", "C_TTSSettings",
+	"C_Timer", "C_Map", "C_VoiceChat", "C_TTSSettings", "C_UnitAuras",
 	"Settings", "SOUNDKIT",
 	"GetTime", "GetInstanceInfo", "GetZoneText",
 	"UnitPosition", "GetPlayerFacing", "UnitCanAttack", "issecretvalue",
+	"UnitGUID", "UnitCastingInfo",
 	"PlaySound", "PlaySoundFile",
 	"StaticPopup_Show", "StaticPopup_Hide",
 	"CreateVector2D",
@@ -41,9 +42,10 @@ files["spec/"] = {
 	globals = { "_G", "math" },
 	read_globals = {
 		"CreateFrame", "UIParent", "GameTooltip", "C_Timer", "C_Map",
-		"C_VoiceChat", "C_TTSSettings", "Settings", "SOUNDKIT",
+		"C_VoiceChat", "C_TTSSettings", "C_UnitAuras", "Settings", "SOUNDKIT",
 		"GetTime", "GetInstanceInfo", "GetZoneText",
 		"UnitPosition", "GetPlayerFacing", "UnitCanAttack", "issecretvalue",
+		"UnitGUID", "UnitCastingInfo",
 		"PlaySound", "PlaySoundFile", "StaticPopup_Show", "StaticPopup_Hide",
 		"CreateVector2D", "SlashCmdList", "StaticPopupDialogs",
 		"GetBindingKey", "GetBindingText", "SetBinding", "SaveBindings",

@@ -64,6 +64,9 @@ M.instanceMapID = 0
 M.zoneText = ""
 M.uiMapID = 0
 M.hostile = {}       -- unit token -> bool
+M.guids = {}         -- unit token -> GUID string
+M.auras = {}         -- unit token -> { {name, duration, expirationTime, filter}, ... }
+M.casts = {}         -- unit token -> { spellID, startMS, endMS } or nil
 
 -- ---------------------------------------------------------------------------
 -- Frames
@@ -284,6 +287,50 @@ function M.setFacing(f, secret)
 end
 
 -- ---------------------------------------------------------------------------
+-- Auras and casts
+--
+-- Both are driven the way the client drives them: state changes, then the event
+-- that tells addons to go and look. Nothing here hands the addon the answer.
+-- ---------------------------------------------------------------------------
+
+-- Put an aura on `unit` and fire UNIT_AURA. `duration` is what the client
+-- declares; `expirationTime` follows from the clock.
+function M.applyAura(unit, name, duration, filter)
+	M.auras[unit] = M.auras[unit] or {}
+	table.insert(M.auras[unit], {
+		name = name,
+		duration = duration,
+		expirationTime = clock + (duration or 0),
+		filter = filter or "HELPFUL",
+		spellId = 0,
+		auraInstanceID = #M.auras[unit] + 1,
+	})
+	M.fire("UNIT_AURA", unit)
+end
+
+function M.removeAura(unit, name)
+	local list = M.auras[unit]
+	if list then
+		for i = #list, 1, -1 do
+			if list[i].name == name then table.remove(list, i) end
+		end
+	end
+	M.fire("UNIT_AURA", unit)
+end
+
+-- Start a cast on `unit` and fire UNIT_SPELLCAST_START. Pass `castGUID = false`
+-- to model a client that does not hand one over.
+function M.startCast(unit, spellID, duration, castGUID)
+	local startMS = clock * 1000
+	M.casts[unit] = { spellID = spellID, startMS = startMS, endMS = startMS + duration * 1000 }
+	if castGUID == nil then
+		castGUID = ("Cast-%s-%d"):format(unit, math.floor(startMS))
+	end
+	M.fire("UNIT_SPELLCAST_START", unit, castGUID or nil, spellID)
+	return castGUID
+end
+
+-- ---------------------------------------------------------------------------
 -- Install globals
 -- ---------------------------------------------------------------------------
 
@@ -304,6 +351,9 @@ function M.reset()
 	M.zoneText = ""
 	M.uiMapID = 0
 	M.hostile = {}
+	M.guids = {}
+	M.auras = {}
+	M.casts = {}
 
 	_G.SnakeSaysDB = nil
 
@@ -360,6 +410,31 @@ function M.reset()
 
 	_G.UnitCanAttack = function(_, unit) return M.hostile[unit] and true or false end
 	_G.UnitExists = function(unit) return M.hostile[unit] ~= nil end
+	_G.UnitGUID = function(unit) return M.guids[unit] end
+
+	-- Indexed within a filter, exactly like the client: the addon has to walk it
+	-- and stop at the first gap.
+	_G.C_UnitAuras = {
+		GetAuraDataByIndex = function(unit, index, filter)
+			local list = M.auras[unit]
+			if not list then return nil end
+			local seen = 0
+			for _, aura in ipairs(list) do
+				if aura.filter == (filter or "HELPFUL") then
+					seen = seen + 1
+					if seen == index then return aura end
+				end
+			end
+			return nil
+		end,
+	}
+
+	_G.UnitCastingInfo = function(unit)
+		local cast = M.casts[unit]
+		if not cast then return nil end
+		-- name, text, texture, startTimeMS, endTimeMS, ...
+		return "Echo of Ula'tek", nil, nil, cast.startMS, cast.endMS
+	end
 
 	_G.issecretvalue = isSecret
 

@@ -26,7 +26,6 @@ local _, ns = ...
 local Sim = {}
 ns.Sim = Sim
 
-local UNIT = "boss1"
 local DEFAULT_WAVES = 5  -- the opening phase; it grows to 6 and 7 as the boss drops
 local MAX_WAVES = 12
 local LEAD_IN = 3        -- seconds of warning before anything happens
@@ -75,7 +74,7 @@ function Sim.IsRunning() return running end
 function Sim.Stop(quiet)
 	if not running then return false end
 	tearDown()
-	ns.Detector.HandleEvent("ENCOUNTER_END", ns.ENCOUNTERS[1].id)
+	ns.Detector.EndReplay()
 	if not quiet then ns.Print("practice run stopped.") end
 	return true
 end
@@ -109,7 +108,7 @@ local function begin(waves)
 	-- the board and the radar hidden. Lift it for the duration.
 	ns.SetVisibilityOverride(true)
 
-	ns.Detector.HandleEvent("ENCOUNTER_START", ns.ENCOUNTERS[1].id, "Azta'rec (practice)")
+	ns.Detector.Reset()
 	return waves
 end
 
@@ -118,12 +117,13 @@ end
 local function queueReplay(startAt, waves)
 	for wave = 1, waves do
 		at(startAt + ECHO_GAP * (wave - 1), function()
-			ns.Detector.HandleEvent("UNIT_SPELLCAST_START", UNIT)
+			ns.Detector.Advance()
 		end)
 	end
 	at(startAt + ECHO_GAP * waves + 4, function()
 		if running then
 			tearDown()
+			ns.Detector.EndReplay()
 			ns.Print("practice run finished.")
 		end
 	end)
@@ -192,42 +192,16 @@ end
 
 -- ---------------------------------------------------------------------------
 -- Recorded run: the real thing, driven by where the player stands
+--
+-- This rehearsed the recording engine, which is not written yet -- see
+-- SPEC-detection.md. It says so rather than starting a run that could never
+-- record anything.
 -- ---------------------------------------------------------------------------
 
-function Sim.StartRecorded(waves)
-	waves = begin(waves)
-	if not waves then return false end
-
-	local grid = ns.Detector.ActiveGrid()
-	local channelLength = grid.first + grid.spacing * (waves - 1) + 0.46
-
-	ns.Print(("practice run: |cffffd200%d waves|r starting in %ds. "):format(waves, LEAD_IN)
-		.. "You are the centre of the room - walk around during the wave phase.")
-	if ns.GetMode() == "semi" then
-		ns.Print("press your |cffffd200Quadrant detection|r key once per wave.")
-	elseif ns.GetMode() == "manual" then
-		ns.Print("press a quadrant on the board once per wave.")
-	end
-	ns.Print("/ss sim stop ends it early.")
-
-	at(LEAD_IN, function()
-		ns.Print("|cff33ff99waves incoming|r - stand where you want to be for each one.")
-		ns.Detector.HandleEvent("UNIT_SPELLCAST_CHANNEL_START", UNIT)
-	end)
-
-	at(LEAD_IN + channelLength, function()
-		ns.Detector.HandleEvent("UNIT_SPELLCAST_CHANNEL_STOP", UNIT)
-		if ns.Seq.Count() == 0 then
-			ns.Print("|cffff5555nothing was recorded|r - you may not have moved off the centre.")
-			tearDown()
-			ns.Detector.HandleEvent("ENCOUNTER_END", ns.ENCOUNTERS[1].id)
-			return
-		end
-		ns.Print("|cffffd200repeat phase|r - follow the calls.")
-	end)
-
-	queueReplay(LEAD_IN + channelLength + 1.5, waves)
-	return true
+function Sim.StartRecorded()
+	ns.Print("|cffff5555recorded practice runs need the detection engine|r, which is being rebuilt.")
+	ns.Print("`/ss sim` still works: it plays a made-up run so you can check the calls.")
+	return false
 end
 
 -- `/ss sim`, `/ss sim 7`, `/ss sim record`, `/ss sim record 7`, `/ss sim stop`.

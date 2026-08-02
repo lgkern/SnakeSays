@@ -4,9 +4,12 @@ local _, ns = ...
 -- Position.lua  ·  where the player is standing, in room terms.
 --
 -- UnitPosition("player") returns world yards as (a, b, z, instanceID), where
--- axis `a` points NORTH and axis `b` points WEST. Everything here converts that
--- into the room's own frame -- x east, y north, origin at the room centre --
--- and buckets it into one of the four cardinal quadrants.
+-- `a` runs north and `b` runs west. Everything here is expressed in those two
+-- axes rather than in an angle, because the room's quarters are cut on the
+-- diagonals: which quarter you are in is "is |north| bigger than |west|", a
+-- comparison that is exactly as true five yards from the boss as it is at the
+-- wall. An arctangent would be a lot of precision spent on a number that swings
+-- a quarter-turn per step at melee range.
 --
 -- Secret values
 -- -------------
@@ -14,6 +17,9 @@ local _, ns = ...
 -- be passed around freely but throw the instant you do arithmetic on them, so
 -- every read AND every calculation on the result is wrapped. A guarded failure
 -- returns nil; it never propagates an error into a combat event handler.
+--
+-- Offset() is the one place a reading is turned into numbers we own. Everything
+-- downstream works off its result, so the guard has a single edge to sit on.
 --
 -- If reading position stops working altogether while we're in the delve, the
 -- automatic modes have nothing to stand on. Rather than silently recording
@@ -23,11 +29,14 @@ local _, ns = ...
 local Position = {}
 ns.Position = Position
 
--- Quadrants in compass order, offset so each cardinal name covers the 90
--- degrees centred on it (N spans 315-45, E spans 45-135, and so on).
-local QUADRANT_BY_ARC = { "N", "E", "S", "W" }
+local abs, sqrt = math.abs, math.sqrt
 
-local DEAD_ZONE = 0.5   -- yards; inside this the bearing is meaningless
+-- Inside this many yards of the centre there is no bearing worth having: a
+-- single step swings it clean across a boundary, so the honest answer is that
+-- we do not know (R6.7). Every reading in a logged round sat 5 to 11 yards out,
+-- and the one that had no bearing at all was 0.61 yards, so this sits clear of
+-- both.
+local DEAD_ZONE = 1.0
 
 local demoted = false   -- warned and dropped to manual already this session
 
@@ -35,13 +44,21 @@ local demoted = false   -- warned and dropped to manual already this session
 -- Room centre
 -- ---------------------------------------------------------------------------
 
--- The measured centre if `/ss measure` has ever been run, else the shipped one.
+-- The centre `/ss measure` recorded, or nil if it has never been run. There is
+-- no shipped fallback: an unmeasured room is a room we cannot reason about, and
+-- saying so beats guessing. ns.ROOM carries the author's own measurement as
+-- reference geometry, but a centre is only trusted once this client has stood
+-- in the room and taken it.
 function ns.GetRoomCenter()
 	local stored = ns.db().roomCenter
 	if stored and type(stored.a) == "number" and type(stored.b) == "number" then
 		return stored
 	end
-	return { a = ns.ROOM.centerA, b = ns.ROOM.centerB }
+	return nil
+end
+
+function ns.HasRoomCenter()
+	return ns.GetRoomCenter() ~= nil
 end
 
 -- ---------------------------------------------------------------------------
@@ -59,47 +76,77 @@ local function readWorld()
 	return a, b
 end
 
--- Room-local offsets in yards: x east-positive, y north-positive.
+-- Run `fn` and insist on a real number coming back: not an error, not a secret,
+-- not a NaN.
+local function number(fn)
+	local ok, v = pcall(fn)
+	if not ok or type(v) ~= "number" or v ~= v then return nil end
+	return v
+end
+
+-- How far north and how far west of the room centre the player is, in yards.
+-- nil when the room has never been measured or the client is withholding the
+-- reading -- both of which are answers, not failures.
+--
+-- This is the guarded edge. Past it the two numbers are ours: they came out of
+-- arithmetic that has already been proved to run, so the rest of the file does
+-- plain maths on them.
 function Position.Offset()
-	local a, b = readWorld()
-	if not a then return nil end
 	local center = ns.GetRoomCenter()
-	local ok, x, y = pcall(function()
-		return center.b - b, a - center.a
+	if not center then return nil end
+
+	local a, b = readWorld()
+	if a == nil then return nil end
+
+	local ok, north, west = pcall(function()
+		return a - center.a, b - center.b
 	end)
 	if not ok then return nil end
-	return x, y
+	if type(north) ~= "number" or type(west) ~= "number" then return nil end
+	if north ~= north or west ~= west then return nil end
+	return north, west
 end
 
+-- Yards from the room centre, or nil.
 function Position.Distance()
-	local x, y = Position.Offset()
-	if not x then return nil end
-	return math.sqrt(x * x + y * y)
+	local north, west = Position.Offset()
+	if north == nil then return nil end
+	return number(function() return sqrt(north * north + west * west) end)
 end
 
--- Which cardinal quadrant the player occupies, or nil if that can't be told
--- (unreadable position, or standing too close to the centre to have a bearing).
+-- Which quarter of the room the player is in ("N"/"E"/"S"/"W"), or nil.
+--
+-- The quarters are centred on the cardinals with their boundaries on the
+-- diagonals, so the whole question is which offset is larger. A player sitting
+-- on top of the centre gets nil rather than whichever way the last decimal
+-- happened to fall.
 function Position.Quadrant()
-	local x, y = Position.Offset()
-	if not x then return nil end
-	if math.sqrt(x * x + y * y) < DEAD_ZONE then return nil end
-	local angle = math.deg(math.atan2(x, y))   -- 0 = north, 90 = east
-	if angle < 0 then angle = angle + 360 end
-	return QUADRANT_BY_ARC[math.floor(((angle + 45) % 360) / 90) + 1]
+	local north, west = Position.Offset()
+	if north == nil then return nil end
+	if sqrt(north * north + west * west) < DEAD_ZONE then return nil end
+	if abs(north) >= abs(west) then
+		return north >= 0 and "N" or "S"
+	end
+	return west >= 0 and "W" or "E"
 end
 
--- Player facing in radians, or nil when the client withholds it (which happens
--- in combat). Callers draw a plain blip instead of a direction arrow.
+-- Which way the player is facing, in radians counter-clockwise from north, or
+-- nil. Guarded the same way as position: the type check catches a withheld
+-- value and the arithmetic probe catches a secret one.
 function Position.Facing()
+	if type(GetPlayerFacing) ~= "function" then return nil end
 	local ok, facing = pcall(GetPlayerFacing)
 	if not ok or type(facing) ~= "number" then return nil end
-	local usable = pcall(function() return facing + 0 end)
-	if not usable then return nil end
+	if not pcall(function() return facing * 1 end) then return nil end
+	if facing ~= facing then return nil end
 	return facing
 end
 
+-- Whether the client is handing out coordinates at all. Deliberately *not*
+-- routed through Offset(): this asks about the client, not about whether we can
+-- currently turn a reading into a room position.
 function Position.IsAvailable()
-	return Position.Offset() ~= nil
+	return readWorld() ~= nil
 end
 
 -- ---------------------------------------------------------------------------
@@ -136,8 +183,8 @@ end
 -- ---------------------------------------------------------------------------
 -- Measuring the centre
 --
--- The shipped constants were measured in the middle of the room. If they ever
--- drift, standing in the middle and running `/ss measure` re-pins them.
+-- Nothing ships with a centre. Stand in the middle of the room and run
+-- `/ss measure` to record one; it is kept in SavedVariables.
 -- ---------------------------------------------------------------------------
 
 function Position.MeasureCenter()
