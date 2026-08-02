@@ -1,6 +1,6 @@
 name: CI
 
-# Lints on every push and pull request. (No busted job — SnakeSays ships no tests.)
+# Lints and runs the headless test suite on every push and pull request.
 on:
   push:
   pull_request:
@@ -17,3 +17,19 @@ jobs:
         with:
           args: "--no-color -q"
           annotate: warning
+
+  test:
+    name: Busted
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: leafo/gh-actions-lua@v10
+        with:
+          luaVersion: "5.1"
+      - uses: leafo/gh-actions-luarocks@v4
+      - name: Install busted
+        run: luarocks install busted
+      # The suite loads the addon files listed in SnakeSays.toc against a mock
+      # of the WoW client (spec/helpers/wow.lua). No game install needed.
+      - name: Run specs
+        run: busted --output=TAP

@@ -9,10 +9,20 @@
 ## AddonCompartmentFunc: SnakeSays_OnCompartment
 ## X-Curse-Project-ID: 1593065
 
-# Load order: core state -> sequence -> HUD/options -> commands & keybinds.
+# Load order: shared state -> the recording pipeline (position, modes, the
+# encounter machine, then everything that reacts to it) -> UI -> commands.
+# Announce registers listeners on Detector at load, so it must come after it.
+# Radar builds after HUD so it can anchor itself to the board, and before
+# Options, which reads its settings while building the page.
 Core.lua
 Sequence.lua
+Position.lua
+Modes.lua
+Detector.lua
+Announce.lua
+Sim.lua
 HUD.lua
+Radar.lua
 Options.lua
 Commands.lua
 

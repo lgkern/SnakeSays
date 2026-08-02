@@ -1,0 +1,13 @@
+-- Busted configuration. Run the suite with `busted` from the repo root.
+return {
+	_all = {
+		lpath = "./?.lua;./?/init.lua",
+		["auto-insulate"] = true,
+	},
+	default = {
+		ROOT = { "spec" },
+		pattern = "_spec%.lua$",
+		verbose = true,
+		output = "gtest",
+	},
+}

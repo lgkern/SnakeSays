@@ -269,14 +269,24 @@ function HUD.Flash(dir)
 end
 
 -- Effective visibility = master "show" toggle, gated by the map restriction
--- (when on, the board only appears inside the target delve map).
+-- (when on, the board only appears inside the target delve map). A visibility
+-- override lifts the map gate but not the master toggle.
 function HUD.ApplyShown()
 	if not frame then return end
 	local visible = ns.IsShown()
-	if visible and ns.GetRestrictToMap() then
+	if visible and ns.GetRestrictToMap() and not ns.HasVisibilityOverride() then
 		visible = (ns.CurrentMapID() == ns.GetMapID())
 	end
 	frame:SetShown(visible)
+end
+
+function HUD.IsVisible()
+	return frame ~= nil and frame:IsShown()
+end
+
+-- The board frame, for anything that wants to sit against it.
+function HUD.GetFrame()
+	return frame
 end
 
 function HUD.ApplyLock()

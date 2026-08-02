@@ -1,0 +1,486 @@
+-- ===========================================================================
+-- spec/helpers/wow.lua  ·  headless stand-in for the WoW client API.
+--
+-- Installs the globals the addon reads into _G, backed by state the tests can
+-- drive: a manual clock (no real waiting), an event bus, a settable player
+-- position/facing, and recorders for the things we assert on (spoken text,
+-- played sounds, chat output).
+--
+-- Frames auto-stub any method we haven't modelled (see `stubbed` below), so a
+-- new UI call in the addon never fails the suite for the wrong reason. The
+-- methods the tests actually observe -- visibility, text, colour, scripts,
+-- events -- are implemented for real and keep state.
+-- ===========================================================================
+
+local M = {}
+
+-- ---------------------------------------------------------------------------
+-- Secret values
+--
+-- Retail can hand back "secret" values from position/unit APIs. They tolerate
+-- being passed around but throw the moment you do arithmetic or compare them,
+-- which is exactly what the addon's pcall guards exist to survive. Modelling
+-- that faithfully is the only way to test those guards.
+-- ---------------------------------------------------------------------------
+
+local function boom()
+	error("attempt to use a secret value", 2)
+end
+
+local secretmt = {
+	__add = boom, __sub = boom, __mul = boom, __div = boom, __mod = boom,
+	__pow = boom, __unm = boom, __concat = boom, __len = boom,
+	__lt = boom, __le = boom, __tostring = boom,
+	__index = boom, __newindex = boom,
+}
+
+-- Wrap `v` so any arithmetic/comparison on it errors, like a real secret value.
+function M.secret(v)
+	return setmetatable({ __secret = true, __value = v }, secretmt)
+end
+
+local function isSecret(v)
+	return type(v) == "table" and rawget(v, "__secret") == true
+end
+
+-- ---------------------------------------------------------------------------
+-- State (rebuilt by M.reset)
+-- ---------------------------------------------------------------------------
+
+local clock          -- seconds; only M.advance moves it
+local timers         -- pending C_Timer entries
+local listeners      -- event -> { frame, ... }
+local allFrames      -- every frame created, for OnUpdate driving
+
+M.spoken = {}        -- { {voiceID, text, rate, volume, overlap}, ... }
+M.sounds = {}        -- { soundFileOrKit, ... }
+M.chat = {}          -- printed lines
+M.bindings = {}      -- command -> key
+M.popups = {}        -- shown StaticPopup names
+
+M.position = nil     -- { a, b, z, instanceID } or nil for "unavailable"
+M.facing = 0
+M.instanceMapID = 0
+M.zoneText = ""
+M.uiMapID = 0
+M.hostile = {}       -- unit token -> bool
+
+-- ---------------------------------------------------------------------------
+-- Frames
+-- ---------------------------------------------------------------------------
+
+-- Methods that exist only so the addon's UI code runs; they do nothing and
+-- return the frame so chained calls keep working.
+local stubbed = {
+	"SetSize", "SetWidth", "SetHeight", "SetAllPoints", "ClearAllPoints",
+	"SetMovable", "SetResizable", "SetClampedToScreen", "SetFrameStrata",
+	"SetFrameLevel", "SetToplevel", "StartMoving", "StopMovingOrSizing",
+	"EnableMouse", "EnableKeyboard", "SetPropagateKeyboardInput", "SetUserPlaced",
+	"RegisterForDrag", "RegisterForClicks", "SetHitRectInsets", "SetClipsChildren",
+	"SetHighlightTexture", "SetNormalTexture", "SetPushedTexture", "SetDisabledTexture",
+	"SetBackdrop", "SetBackdropColor", "SetBackdropBorderColor",
+	"SetTexture", "SetAtlas", "SetTexCoord", "SetColorTexture",
+	"SetDrawLayer", "SetBlendMode", "SetDesaturated", "SetGradient", "SetMask",
+	"SetJustifyH", "SetJustifyV", "SetShadowOffset", "SetShadowColor",
+	"SetFont", "SetSpacing", "SetWordWrap", "SetNonSpaceWrap", "SetMaxLines",
+	"SetMinMaxValues", "SetValueStep", "SetObeyStepOnDrag", "SetOrientation",
+	"SetAlpha", "SetScale", "SetIgnoreParentScale", "SetIgnoreParentAlpha",
+	"SetParent", "Raise", "Lower", "SetAttribute", "SetID",
+	"Click", "LockHighlight", "UnlockHighlight",
+}
+
+local frameProto = {}
+frameProto.__index = frameProto
+
+for _, name in ipairs(stubbed) do
+	frameProto[name] = function(self) return self end
+end
+
+function frameProto:Show() self._shown = true end
+function frameProto:Hide() self._shown = false end
+function frameProto:IsShown() return self._shown and true or false end
+function frameProto:IsVisible() return self._shown and true or false end
+function frameProto:SetShown(v) self._shown = v and true or false end
+
+function frameProto:SetText(t) self._text = t end
+function frameProto:GetText() return self._text end
+function frameProto:GetStringWidth() return #tostring(self._text or "") * 6 end
+function frameProto:GetFont() return "Fonts\\FRIZQT__.TTF", 12, "" end
+
+function frameProto:SetTextColor(r, g, b, a) self._textColor = { r, g, b, a } end
+function frameProto:GetTextColor()
+	local c = self._textColor or { 1, 1, 1, 1 }
+	return c[1], c[2], c[3], c[4]
+end
+
+function frameProto:SetVertexColor(r, g, b, a) self._color = { r, g, b, a } end
+function frameProto:GetVertexColor()
+	local c = self._color or { 1, 1, 1, 1 }
+	return c[1], c[2], c[3], c[4]
+end
+
+function frameProto:SetPoint(point, rel, relPoint, x, y)
+	self._point = { point, rel, relPoint, x, y }
+end
+function frameProto:GetPoint()
+	local p = self._point or { "CENTER", nil, "CENTER", 0, 0 }
+	return p[1], p[2], p[3], p[4], p[5]
+end
+function frameProto:GetNumPoints() return self._point and 1 or 0 end
+
+function frameProto:SetChecked(v) self._checked = v and true or false end
+function frameProto:GetChecked() return self._checked and true or false end
+
+function frameProto:SetRotation(r) self._rotation = r end
+function frameProto:GetRotation() return self._rotation or 0 end
+
+function frameProto:SetEnabled(v) self._enabled = v and true or false end
+function frameProto:Enable() self._enabled = true end
+function frameProto:Disable() self._enabled = false end
+function frameProto:IsEnabled()
+	if self._enabled == nil then return true end
+	return self._enabled
+end
+
+function frameProto:SetValue(v)
+	self._value = v
+	local fn = self._scripts and self._scripts.OnValueChanged
+	if fn then fn(self, v) end
+end
+function frameProto:GetValue() return self._value or 0 end
+
+function frameProto:SetScript(which, fn) self._scripts[which] = fn end
+function frameProto:GetScript(which) return self._scripts[which] end
+function frameProto:HookScript(which, fn)
+	local prev = self._scripts[which]
+	self._scripts[which] = function(...)
+		if prev then prev(...) end
+		return fn(...)
+	end
+end
+
+function frameProto:RegisterEvent(event)
+	listeners[event] = listeners[event] or {}
+	for _, f in ipairs(listeners[event]) do
+		if f == self then return end
+	end
+	table.insert(listeners[event], self)
+end
+
+function frameProto:UnregisterEvent(event)
+	local list = listeners[event]
+	if not list then return end
+	for i = #list, 1, -1 do
+		if list[i] == self then table.remove(list, i) end
+	end
+end
+
+function frameProto:UnregisterAllEvents()
+	for event in pairs(listeners) do self:UnregisterEvent(event) end
+end
+
+function frameProto:GetName() return self._name end
+function frameProto:GetParent() return self._parent end
+function frameProto:GetWidth() return self._width or 100 end
+function frameProto:GetHeight() return self._height or 100 end
+function frameProto:GetObjectType() return self._type end
+
+local function newRegion(kind, name, parent)
+	local r = setmetatable({}, frameProto)
+	r._type = kind
+	r._name = name
+	r._parent = parent
+	r._shown = true
+	r._scripts = {}
+	if name then _G[name] = r end
+	table.insert(allFrames, r)
+	return r
+end
+
+function frameProto:CreateTexture(name, layer)
+	local t = newRegion("Texture", name, self)
+	t._layer = layer
+	return t
+end
+
+function frameProto:CreateFontString(name, layer)
+	local fs = newRegion("FontString", name, self)
+	fs._layer = layer
+	return fs
+end
+
+-- Fire a script handler on this frame, if it has one.
+function frameProto:Run(which, ...)
+	local fn = self._scripts[which]
+	if fn then return fn(self, ...) end
+end
+
+-- ---------------------------------------------------------------------------
+-- Test-facing controls
+-- ---------------------------------------------------------------------------
+
+-- Dispatch an event to every frame registered for it.
+function M.fire(event, ...)
+	local list = listeners[event]
+	if not list then return end
+	for _, frame in ipairs({ unpack(list) }) do   -- copy: handlers may unregister
+		local fn = frame._scripts.OnEvent
+		if fn then fn(frame, event, ...) end
+	end
+end
+
+-- Move the clock forward, running any timers that come due and driving OnUpdate
+-- in `step`-sized slices so tickers fire the right number of times.
+function M.advance(seconds, step)
+	step = step or 0.05
+	local target = clock + seconds
+	while clock < target do
+		local dt = math.min(step, target - clock)
+		clock = clock + dt
+		for _, entry in ipairs({ unpack(timers) }) do
+			if not entry.cancelled and clock >= entry.due then
+				if entry.ticker then
+					entry.due = entry.due + entry.interval
+					entry.fn()
+				else
+					entry.cancelled = true
+					entry.fn()
+				end
+			end
+		end
+		for _, frame in ipairs({ unpack(allFrames) }) do
+			if frame._shown and frame._scripts.OnUpdate then
+				frame._scripts.OnUpdate(frame, dt)
+			end
+		end
+	end
+	-- drop finished one-shots so the list doesn't grow without bound
+	for i = #timers, 1, -1 do
+		if timers[i].cancelled then table.remove(timers, i) end
+	end
+end
+
+function M.now() return clock end
+
+-- Player position. Call with no args to make position *unavailable* (the
+-- Blizzard-took-it-away case); pass `secret = true` to hand back secret values.
+function M.setPosition(a, b, z, instanceID, secret)
+	if a == nil then
+		M.position = nil
+		return
+	end
+	if secret then
+		M.position = { M.secret(a), M.secret(b), z or 0, instanceID or 0 }
+	else
+		M.position = { a, b, z or 0, instanceID or 0 }
+	end
+end
+
+function M.setFacing(f, secret)
+	M.facing = secret and M.secret(f) or f
+end
+
+-- ---------------------------------------------------------------------------
+-- Install globals
+-- ---------------------------------------------------------------------------
+
+function M.reset()
+	clock = 1000            -- non-zero: catches code that treats GetTime()==0 as "unset"
+	timers = {}
+	listeners = {}
+	allFrames = {}
+
+	M.spoken = {}
+	M.sounds = {}
+	M.chat = {}
+	M.bindings = {}
+	M.popups = {}
+	M.position = { 0, 0, 0, 0 }
+	M.facing = 0
+	M.instanceMapID = 0
+	M.zoneText = ""
+	M.uiMapID = 0
+	M.hostile = {}
+
+	_G.SnakeSaysDB = nil
+
+	_G.UIParent = newRegion("Frame", "UIParent", nil)
+
+	_G.CreateFrame = function(kind, name, parent, template)
+		local f = newRegion(kind or "Frame", name, parent)
+		f._template = template
+		f._shown = true
+		return f
+	end
+
+	_G.GameTooltip = newRegion("GameTooltip", "GameTooltip", nil)
+	_G.GameTooltip.SetOwner = function() end
+	_G.GameTooltip.AddLine = function() end
+	_G.GameTooltip.AddDoubleLine = function() end
+
+	_G.GetTime = function() return clock end
+
+	_G.C_Timer = {
+		After = function(delay, fn)
+			table.insert(timers, { due = clock + delay, fn = fn })
+		end,
+		NewTimer = function(delay, fn)
+			local entry = { due = clock + delay, fn = fn }
+			table.insert(timers, entry)
+			return {
+				Cancel = function() entry.cancelled = true end,
+				IsCancelled = function() return entry.cancelled == true end,
+			}
+		end,
+		NewTicker = function(interval, fn)
+			local entry = { due = clock + interval, interval = interval, fn = fn, ticker = true }
+			table.insert(timers, entry)
+			return {
+				Cancel = function() entry.cancelled = true end,
+				IsCancelled = function() return entry.cancelled == true end,
+			}
+		end,
+	}
+
+	_G.UnitPosition = function(unit)
+		if unit ~= "player" or not M.position then return nil end
+		return M.position[1], M.position[2], M.position[3], M.position[4]
+	end
+
+	_G.GetPlayerFacing = function() return M.facing end
+
+	_G.GetInstanceInfo = function()
+		return M.zoneText, "party", 0, "", 0, 0, false, M.instanceMapID
+	end
+
+	_G.GetZoneText = function() return M.zoneText end
+
+	_G.UnitCanAttack = function(_, unit) return M.hostile[unit] and true or false end
+	_G.UnitExists = function(unit) return M.hostile[unit] ~= nil end
+
+	_G.issecretvalue = isSecret
+
+	_G.C_Map = {
+		GetBestMapForUnit = function() return M.uiMapID end,
+		GetWorldPosFromMapPos = function() return nil end,
+		GetMapArtLayers = function() return nil end,
+		GetMapArtLayerTextures = function() return nil end,
+	}
+
+	_G.CreateVector2D = function(x, y)
+		return { x = x, y = y, GetXY = function(self) return self.x, self.y end }
+	end
+
+	_G.C_VoiceChat = {
+		GetTtsVoices = function()
+			return { { voiceID = 0, name = "Default" }, { voiceID = 1, name = "Alt" } }
+		end,
+		SpeakText = function(voiceID, text, rate, volume, overlap)
+			table.insert(M.spoken, {
+				voiceID = voiceID, text = text,
+				rate = rate, volume = volume, overlap = overlap,
+			})
+		end,
+	}
+
+	_G.C_TTSSettings = { GetSpeechRate = function() return 0 end }
+
+	_G.PlaySoundFile = function(file, channel)
+		table.insert(M.sounds, { file = file, channel = channel })
+		return true, #M.sounds
+	end
+	_G.PlaySound = function(kit, channel)
+		table.insert(M.sounds, { kit = kit, channel = channel })
+		return true, #M.sounds
+	end
+	_G.SOUNDKIT = setmetatable({}, { __index = function(_, k) return "SOUNDKIT." .. k end })
+
+	_G.StaticPopupDialogs = {}
+	_G.StaticPopup_Show = function(name, ...)
+		table.insert(M.popups, name)
+		return _G.StaticPopupDialogs[name]
+	end
+	_G.StaticPopup_Hide = function() end
+
+	_G.Settings = {
+		RegisterCanvasLayoutCategory = function(_, name)
+			return { GetID = function() return name end, ID = name }
+		end,
+		RegisterAddOnCategory = function() end,
+		OpenToCategory = function() end,
+	}
+
+	_G.GetBindingKey = function(command) return M.bindings[command] end
+	_G.GetBindingText = function(key) return key end
+	_G.SetBinding = function(key, command)
+		if command then M.bindings[command] = key
+		else
+			for c, k in pairs(M.bindings) do
+				if k == key then M.bindings[c] = nil end
+			end
+		end
+		return true
+	end
+	_G.SaveBindings = function() end
+	_G.GetCurrentBindingSet = function() return 1 end
+
+	_G.SlashCmdList = {}
+
+	_G.IsAltKeyDown = function() return false end
+	_G.IsControlKeyDown = function() return false end
+	_G.IsShiftKeyDown = function() return false end
+	_G.IsMouseButtonDown = function() return false end
+	_G.InCombatLockdown = function() return false end
+
+	_G.print = function(...)
+		local parts = {}
+		for i = 1, select("#", ...) do
+			parts[i] = tostring((select(i, ...)))
+		end
+		table.insert(M.chat, table.concat(parts, " "))
+	end
+
+	_G.wipe = function(t)
+		for k in pairs(t) do t[k] = nil end
+		return t
+	end
+	_G.strtrim = function(s) return (tostring(s):gsub("^%s*(.-)%s*$", "%1")) end
+	_G.strsplit = function(sep, s)
+		local out = {}
+		for piece in tostring(s):gmatch("[^" .. sep .. "]+") do table.insert(out, piece) end
+		return unpack(out)
+	end
+	_G.strlower = string.lower
+	_G.format = string.format
+	_G.tinsert = table.insert
+	_G.tremove = table.remove
+
+	-- Lua 5.1 has math.atan2; 5.2+ dropped it. The addon relies on it.
+	if not math.atan2 then
+		math.atan2 = function(y, x) return math.atan(y, x) end
+	end
+end
+
+-- Run a slash command the way the chat frame would: `M.slash("SNAKESAYS", "hide")`.
+function M.slash(handlerKey, args)
+	local handler = _G.SlashCmdList[handlerKey]
+	assert(handler, "no slash handler registered for " .. tostring(handlerKey))
+	return handler(args or "")
+end
+
+-- Did the mock ever hand out a chat line containing `needle`?
+function M.chatContains(needle)
+	for _, line in ipairs(M.chat) do
+		if line:find(needle, 1, true) then return true end
+	end
+	return false
+end
+
+-- Everything spoken so far, as plain strings.
+function M.spokenText()
+	local out = {}
+	for i, entry in ipairs(M.spoken) do out[i] = entry.text end
+	return out
+end
+
+return M

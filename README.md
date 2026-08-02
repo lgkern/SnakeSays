@@ -1,16 +1,47 @@
 # SnakeSays
 
-A Simon-Says HUD for World of Warcraft. Built for the memory game from Azta'rec, 
+A Simon-Says HUD for World of Warcraft. Built for the memory game from Azta'rec,
 the Delve Nemesis from Midnight Season 2, who divides the room into four quadrants and
 does five casts (one safe quadrant each) before replaying the same five.
 
-SnakeSays lets you **record the sequence as it happens**, by clicking the HUD
-or pressing keybinds, and then read it back off the screen during the silent
-repeat.
+SnakeSays **records the sequence as it happens** and reads it back to you during
+the silent repeat — by voice, by a bell when you reach safety, and on screen.
+
+The mechanic runs more than once per pull, and the run gets longer each time —
+on **??** difficulty it's 5 waves at 90%, 6 at 60% and 7 at 30%. Each phase is
+recorded and replayed on its own; the previous one is cleared when the next
+channel starts.
 
 It records and displays only. It never moves your character, targets, or places
 world markers, so there is nothing protected here: **every button and keybind
 works in combat.**
+
+## Modes
+
+The first time you walk into the delve, SnakeSays asks how it should work. The
+answer is remembered; change it any time with `/ss mode` or in the options.
+
+| Mode | Who decides *when* | Who decides *which quadrant* |
+|------|--------------------|------------------------------|
+| **Automatic** | SnakeSays | SnakeSays |
+| **Semi-automatic** | You (one keybind per wave) | SnakeSays, from where you stand |
+| **Manual** | You | You |
+
+**Automatic** watches the boss channel and records where you stood for each
+wave, with no input from you. **Semi-automatic** leaves the timing to you: press
+the *Quadrant detection* keybind at each wave and SnakeSays reads your position.
+**Manual** is the original behaviour — you press the quadrant yourself.
+
+In automatic mode, board clicks and quadrant keybinds are ignored by default so
+a stray press can't corrupt a recording SnakeSays is managing. There's a setting
+to allow them anyway.
+
+### If position stops working
+
+The automatic modes depend on the game telling addons where your character is.
+If that ever stops — most likely because Blizzard restricts it — SnakeSays says
+so in chat, re-enables manual input and drops you back to **Manual**. It won't
+quietly record garbage.
 
 ## The HUD
 
@@ -34,66 +65,156 @@ defaults are:
 | South    | Square   | Blue   |
 | West     | Cross    | Red    |
 
-Press a wedge (mouse or keybind) and its marker is appended to the sequence row
-beneath the circle. A **reset** button sits at the left of that row (and has its
-own keybind) to clear the sequence and start a fresh recording.
+The recorded sequence renders as a row of marker icons beneath the circle, and a
+**reset** button sits at the left of that row. Wedges flash as each wave is
+recorded, whoever recorded it.
 
-So pressing Diamond → Square → Cross shows that run of three icons under the
-board; reset wipes it.
+## During the repeat
+
+When the boss starts repeating the run, SnakeSays calls each wave three ways:
+
+- **Voice** — one word per wave, the safe colour (*"Red"*) or the marker's name
+  (*"Cross"*), your choice. Deliberately short: waves are about three seconds
+  apart.
+- **Bell** — rings the moment you actually reach the safe quadrant, so you can
+  confirm the move without looking away.
+- **On-screen call** — the current quadrant large, with the next one beneath it
+  so you can start moving early. Drag it anywhere; unlock the HUD to grab it.
+
+### Position radar
+
+An optional second window showing the room top-down with you inside it. It turns
+with you, so "up" is always the way you're facing. During the repeat it's tinted
+**green while you're standing safe** and **red while you're not**.
+
+Each quadrant's marker sits on the rim, with the dividing lines between them —
+those lines are the real quadrant boundaries, so a marker means "anywhere in this
+quarter", not "on this line".
+
+The slice you're being sent to is filled in **green** and **pulses slowly until
+you get there**, then holds steady — so you can tell at a glance whether you've
+made it without reading anything.
+
+Once you're standing safe, the slice you'll be sent to next lights up in
+**yellow**, dimmer and steady, so you know which way you're going before the call
+comes. It only appears after you've arrived: while you're still travelling, a
+second lit slice is just something else to misread under pressure. It doesn't
+appear on the last wave, or when the next call is for the slice you're already
+in — yellow over the green would read as "move" when the answer is "stay".
+
+Switch the pulse off with **Blink the safe slice until you reach it** if you'd
+rather it just sat there.
+
+By default the radar hangs off the left edge of the board and moves with it, so
+there's only one thing to place. Drag the radar itself (with the HUD unlocked)
+and it pins to the screen on its own instead; `/ss recenter` reattaches it.
+
+## Practice run
+
+`/ss sim` makes up a run anywhere in the world, shows it going onto the board,
+then calls it back with the real voice, bell, radar and popup. It prints the run
+it's about to play, so you can check the calls against it. `/ss sim stop` ends it.
+
+It runs a 5-wave phase by default; `/ss sim 6` or `/ss sim 7` practises the
+longer ones. **You don't have to move for this one** — it exists to check the
+announcements and to place the windows.
+
+`/ss sim record` is the other half: it records from where you actually stand, the
+way a real pull does. You become the centre of the room, so **walk around** during
+the wave phase — stand still and there's no quadrant to read, so nothing gets
+recorded. It follows your mode, so in Semi-automatic you press the capture key
+and in Manual you press the board.
+
+The board and the radar are normally hidden outside the delve, so a practice run
+brings them up for its duration and puts them away afterwards. It only lifts the
+*location* restriction: if you've hidden the board or switched the radar off,
+they stay that way.
+
+## When something doesn't behave
+
+`/ss status` prints what the addon currently believes — mode, whether it thinks
+it's in the delve, whether position and facing are readable and which quadrant it
+sees, where the room centre is, which windows are up, the encounter state, and
+how many TTS voices are installed.
 
 ## Settings
 
-`/ss` (or `Esc → Options → AddOns → SnakeSays`) opens SnakeSays' options page,
-all in one place inside Blizzard's settings panel:
+`/ss` (or `Esc → Options → AddOns → SnakeSays`) opens the options page:
 
-- **Per-quadrant marker** — each quadrant shows a row of the eight WoW markers;
-  click one to assign it. Markers are unique across quadrants: choosing one
-  that's already in use simply **swaps** the two quadrants, so you never end up
-  with a duplicate.
-- **Keybind per quadrant + reset** — click a key box and press the combo you
-  want (Esc cancels, right-click clears). These are the real game bindings, so
-  they also show up under `Esc → Options → Keybindings → SnakeSays`.
-- **Show HUD** / **Lock HUD** — unlock to drag the board by its title bar.
-- **Auto-reset** — when on (default), the sequence clears itself a set number of
-  seconds after the *first* press, so a stale recording never carries into the
-  next pull. The delay is the **Auto-reset after** slider (30–60s, default **40s**).
-  The timer is anchored to the first press and doesn't slide forward as you add to
-  the sequence.
-- **Only show inside the Delve Nemesis map** — on by default; the board only
-  appears while you're in Venomfall Deeps. Uncheck it to show
-  the HUD everywhere (e.g. to reposition it out in the world).
-
-## Keybinds
-
-The addon adds five keybinds, one key per quadrant plus one for reset. You can set them
-right in the options window or under `Esc → Options → Keybindings → SnakeSays`. The 
-keybinds do exactly what the mouse does, so you can record the sequence without looking 
-away from the fight.
+- **Recording mode** — Automatic, Semi-automatic or Manual.
+- **Per-quadrant marker** — click one of the eight markers to assign it. Markers
+  are unique across quadrants: choosing one that's already in use **swaps** the
+  two, so you never end up with a duplicate.
+- **Keybinds** — one per quadrant, plus *Quadrant detection* (semi-automatic
+  capture) and *Reset*. Click a key box and press the combo (Esc cancels,
+  right-click clears). These are real game bindings, so they also show up under
+  `Esc → Options → Keybindings → SnakeSays`.
+- **Show HUD** / **Lock HUD** — unlock to drag the board, the call and the radar.
+- **Ignore board clicks and quadrant keybinds** — on by default in Automatic.
+- **Auto-reset** — clears the sequence a set number of seconds after the *first*
+  press (30–60s, default 40s). The timer is anchored to the first press and
+  doesn't slide forward as you add to the sequence.
+- **Only show inside the Delve Nemesis map** — on by default. Untick it to place
+  the windows out in the world.
+- **During the replay** — speak the safe quadrant on/off, call things by colour
+  or by marker, voice volume, let calls overlap, bell on/off, on-screen call
+  on/off, next-up line on/off, radar on/off, blink the safe slice on/off.
 
 ## Slash commands
 
 | Command | Effect |
 |---------|--------|
 | `/ss` | open the options window |
-| `/ss show` · `/ss hide` | show / hide the HUD |
-| `/ss toggle` | toggle the HUD |
+| `/ss mode` | show the mode; `/ss mode auto\|semi\|manual` sets it |
+| `/ss sim` | demo run anywhere; `/ss sim 7` for a 7-wave phase, `/ss sim stop` ends it |
+| `/ss sim record` | practice run recorded from where you stand |
+| `/ss status` | report what the addon currently sees |
+| `/ss radar` | toggle the position radar |
+| `/ss measure` | re-pin the room centre to where you stand |
+| `/ss show` · `/ss hide` · `/ss toggle` | show / hide the HUD |
 | `/ss lock` · `/ss unlock` | lock / unlock for dragging |
 | `/ss reset` | clear the recorded sequence |
-| `/ss recenter` | move the HUD back to the centre of the screen |
-| `/ss options` | open the options window |
+| `/ss recenter` | move the HUD, radar and on-screen call back to their default places |
 
 (`/snakesays` is a long alias for `/ss`.)
+
+### About `/ss measure`
+
+Quadrant detection is measured from the centre of the boss room, and those
+coordinates ship with the addon. If they're ever wrong, stand in the middle of
+the room and run `/ss measure` — the corrected centre is saved. `/ss measure
+reset` restores the shipped values.
 
 ## Files
 
 ```
-Core.lua        marker catalogue, SavedVariables, assignment (with swap dedupe)
-Sequence.lua    the recorded list of presses + a change listener
+Core.lua        markers, SavedVariables, modes, room geometry, assignment
+Sequence.lua    the recorded run: player presses vs recorder entries
+Position.lua    quadrant from world coordinates, guarded; fallback to manual
+Modes.lua       the first-run mode prompt
+Detector.lua    encounter state machine: arm, record the channel, step the replay
+Announce.lua    voice, bell and the on-screen call
+Radar.lua       the rotating position radar
+Sim.lua         /ss sim practice run
 HUD.lua         the circular board, sequence row, reset button, drag/lock
-Options.lua     AddOns settings page (canvas): marker picker, keybinds, show/lock
+Options.lua     AddOns settings page (canvas)
 Commands.lua    keybind globals, binding labels, /ss hub
-Bindings.xml    the five keybinding definitions
+Bindings.xml    the six keybinding definitions
 snakesays.tga   addon icon (AddOns list + AddOn Compartment button)
 Media/          wedge-{n,e,s,w}.tga — the four pre-oriented wedge shapes
+spec/           headless test suite (see below)
 ```
 
+## Tests
+
+The suite runs the real addon files, in the load order from `SnakeSays.toc`,
+against a mock of the WoW client — a manual clock, an event bus, settable player
+position and facing, and faithful secret-value semantics. No game install
+needed.
+
+```sh
+busted
+```
+
+`spec/helpers/wow.lua` is the client mock, `spec/helpers/encounter.lua` drives a
+scripted pull. Both lint and tests run in CI on every push.

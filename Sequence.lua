@@ -12,7 +12,9 @@ local _, ns = ...
 local Seq = {}
 ns.Seq = Seq
 
-local MAX = 20            -- generous cap; the boss does 5 casts per cycle
+-- The run grows as the boss loses health -- on the hardest difficulty it is 5
+-- waves, then 6, then 7 -- so the cap has to sit well clear of the longest one.
+local MAX = 20
 local list = {}          -- array of quadrant keys ("N"/"E"/"S"/"W")
 local listener           -- single change callback (the HUD)
 local autoTimer          -- pending auto-reset timer, if any
@@ -30,20 +32,15 @@ local function cancelAutoReset()
 	end
 end
 
--- Append a quadrant press. Returns true if it was recorded.
--- Rejected (returns false) when at the cap, or when it repeats the immediately
--- preceding press -- that consecutive duplicate is double-click noise, never a
--- real input (a genuine sequence only ever changes quadrant between casts).
-function Seq.Press(quadrant)
+local function append(quadrant, armAutoReset)
 	if not ns.QUADRANT_NAME[quadrant] then return false end
 	if #list >= MAX then return false end
-	if list[#list] == quadrant then return false end
 	local wasEmpty = (#list == 0)
 	list[#list + 1] = quadrant
 	changed()
 	-- Auto-reset is anchored to the FIRST press of a sequence (it does not slide
 	-- forward on later presses), so we only arm it on the empty -> first press.
-	if wasEmpty and ns.GetAutoReset() and C_Timer then
+	if armAutoReset and wasEmpty and ns.GetAutoReset() and C_Timer then
 		cancelAutoReset()
 		autoTimer = C_Timer.NewTimer(ns.GetAutoResetTime(), function()
 			autoTimer = nil
@@ -51,6 +48,32 @@ function Seq.Press(quadrant)
 		end)
 	end
 	return true
+end
+
+-- A quadrant the player picked themselves, by wedge click or quadrant keybind.
+-- Returns true if it was recorded.
+--
+-- Rejected when manual input is blocked (automatic mode), at the cap, or when it
+-- repeats the immediately preceding press -- that consecutive duplicate is
+-- double-click noise rather than a real input, since a hand-driven recording
+-- only advances when the player sees the quadrant change.
+function Seq.Press(quadrant)
+	if ns.GetBlockManualInput() then return false end
+	if list[#list] == quadrant then return false end
+	return append(quadrant, true)
+end
+
+-- A quadrant the addon read off the player's position (automatic recording, or
+-- the semi-automatic capture key). Never gated by the manual-input block, and
+-- never deduplicated: one entry per wave is what keeps the recorded sequence
+-- aligned with the boss' replay, and consecutive waves can share a quadrant.
+--
+-- Also never auto-reset. That timer is a safety net for hand-recorded runs left
+-- lying around between pulls; a recorded run is cleared by the detector when its
+-- replay finishes. The boss' longest phase plus its replay runs past the
+-- auto-reset delay, so leaving it armed would wipe the run mid-call.
+function Seq.Record(quadrant)
+	return append(quadrant, false)
 end
 
 function Seq.Reset()

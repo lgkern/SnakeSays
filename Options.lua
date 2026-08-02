@@ -35,7 +35,11 @@ local KB_X = LEFT + ICON_ROW_W + 14
 local panel, categoryID
 local iconButtons = {}    -- dir -> { markerId -> button }
 local keybindButtons = {} -- command -> button
-local showCB, lockCB, autoResetCB, timerSlider, timerValue, restrictCB
+local modeButtons = {}    -- mode key -> radio button
+local styleButtons = {}   -- announce style key -> radio button
+local showCB, lockCB, autoResetCB, timerSlider, timerValue, restrictCB, blockInputCB
+local ttsCB, overlapCB, bellCB, popupCB, subtitleCB, radarCB, blinkCB
+local volumeSlider, volumeValue
 local capture             -- fullscreen key-capture overlay (created on demand)
 local pendingButton       -- the key box whose binding we're setting
 
@@ -45,6 +49,7 @@ local BIND_COMMAND = {
 	S = "SNAKESAYS_SOUTH", W = "SNAKESAYS_WEST",
 }
 local RESET_COMMAND = "SNAKESAYS_RESET"
+local CAPTURE_COMMAND = "SNAKESAYS_CAPTURE"
 
 local MODIFIER_KEYS = {
 	LSHIFT = true, RSHIFT = true, LCTRL = true, RCTRL = true, LALT = true, RALT = true,
@@ -182,18 +187,133 @@ local function buildKeybindButton(command, x, y)
 end
 
 -- ---------------------------------------------------------------------------
+-- Mode picker
+--
+-- Three radio buttons rather than a dropdown: the choice drives how the whole
+-- addon behaves, so it should be readable at a glance without opening anything.
+-- ---------------------------------------------------------------------------
+
+local function buildModeRow(mode, x, y)
+	local b = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
+	b:SetPoint("TOPLEFT", panel, "TOPLEFT", x, y)
+	b:SetScript("OnClick", function()
+		ns.SetMode(mode.key)
+		Options.Refresh()
+	end)
+
+	local text = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	text:SetPoint("LEFT", b, "RIGHT", 4, 0)
+	text:SetText(mode.name)
+
+	b:SetScript("OnEnter", function()
+		GameTooltip:SetOwner(b, "ANCHOR_RIGHT")
+		GameTooltip:SetText(mode.name)
+		GameTooltip:AddLine(mode.desc, 1, 1, 1, true)
+		GameTooltip:Show()
+	end)
+	b:SetScript("OnLeave", hideTooltip)
+
+	modeButtons[mode.key] = b
+	return b, text
+end
+
+-- ---------------------------------------------------------------------------
 -- Checkboxes
 -- ---------------------------------------------------------------------------
 
-local function buildCheckbox(label, y, getter, setter)
+local function buildCheckbox(label, y, getter, setter, x)
 	local cb = CreateFrame("CheckButton", nil, panel, "UICheckButtonTemplate")
-	cb:SetPoint("TOPLEFT", panel, "TOPLEFT", LEFT, y)
-	cb:SetScript("OnClick", function(self) setter(self:GetChecked()) end)
+	cb:SetPoint("TOPLEFT", panel, "TOPLEFT", x or LEFT, y)
+	cb:SetScript("OnClick", function(self)
+		setter(self:GetChecked())
+		Options.Refresh()
+	end)
 	local text = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	text:SetPoint("LEFT", cb, "RIGHT", 2, 0)
 	text:SetText(label)
 	cb.getter = getter
 	return cb
+end
+
+-- ---------------------------------------------------------------------------
+-- Replay announcements
+--
+-- Their own column on the right: they all concern what happens during the
+-- silent repeat, and the left column is already full of recording settings.
+-- ---------------------------------------------------------------------------
+
+local ANNOUNCE_X = 430
+
+local function buildAnnounceColumn()
+	local heading = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	heading:SetPoint("TOPLEFT", panel, "TOPLEFT", ANNOUNCE_X, -62)
+	heading:SetText("During the replay")
+
+	ttsCB = buildCheckbox("Speak the safe quadrant", -84,
+		ns.GetTTSEnabled, ns.SetTTSEnabled, ANNOUNCE_X)
+
+	-- What the voice and the popup call things. Two radios rather than a
+	-- checkbox: "say marks instead of colours" is a choice, not an on/off.
+	local styleLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	styleLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", ANNOUNCE_X + 24, -112)
+	styleLabel:SetText("Call them by:")
+
+	local styles = { { key = "color", label = "Colour" }, { key = "marker", label = "Marker" } }
+	local styleX = ANNOUNCE_X + 24
+	for _, style in ipairs(styles) do
+		local b = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
+		b:SetPoint("TOPLEFT", panel, "TOPLEFT", styleX, -132)
+		b:SetScript("OnClick", function()
+			ns.SetAnnounceStyle(style.key)
+			Options.Refresh()
+		end)
+		local text = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		text:SetPoint("LEFT", b, "RIGHT", 4, 0)
+		text:SetText(style.label)
+		styleButtons[style.key] = b
+		styleX = styleX + 100
+	end
+
+	local volumeLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	volumeLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", ANNOUNCE_X + 24, -164)
+	volumeLabel:SetText("Voice volume:")
+
+	volumeSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
+	volumeSlider:SetWidth(180)
+	volumeSlider:SetPoint("TOPLEFT", panel, "TOPLEFT", ANNOUNCE_X + 28, -190)
+	volumeSlider:SetMinMaxValues(0, 100)
+	volumeSlider:SetValueStep(5)
+	volumeSlider:SetObeyStepOnDrag(true)
+	if volumeSlider.Low then volumeSlider.Low:SetText("0") end
+	if volumeSlider.High then volumeSlider.High:SetText("100") end
+	if volumeSlider.Text then volumeSlider.Text:SetText("") end
+
+	volumeValue = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	volumeValue:SetPoint("LEFT", volumeSlider, "RIGHT", 14, 0)
+
+	volumeSlider:SetScript("OnValueChanged", function(_, value)
+		value = math.floor(value + 0.5)
+		ns.SetTTSVolume(value)
+		volumeValue:SetText(tostring(value))
+	end)
+
+	overlapCB = buildCheckbox("Let calls overlap each other", -216,
+		ns.GetTTSOverlap, ns.SetTTSOverlap, ANNOUNCE_X)
+	bellCB = buildCheckbox("Ring a bell when you reach safety", -242,
+		ns.GetBellEnabled, ns.SetBellEnabled, ANNOUNCE_X)
+	popupCB = buildCheckbox("Show the call on screen", -268,
+		ns.GetPopupEnabled, ns.SetPopupEnabled, ANNOUNCE_X)
+	subtitleCB = buildCheckbox("Include the next-up line", -294,
+		ns.GetPopupSubtitle, ns.SetPopupSubtitle, ANNOUNCE_X + 24)
+
+	radarCB = buildCheckbox("Show the rotating position radar", -320,
+		ns.GetRadarEnabled, ns.SetRadarEnabled, ANNOUNCE_X)
+	blinkCB = buildCheckbox("Blink the safe slice until you reach it", -346,
+		ns.GetTargetBlink, ns.SetTargetBlink, ANNOUNCE_X + 24)
+
+	local moveHint = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+	moveHint:SetPoint("TOPLEFT", panel, "TOPLEFT", ANNOUNCE_X + 24, -372)
+	moveHint:SetText("Unlock the HUD to drag the call and the radar.")
 end
 
 -- ---------------------------------------------------------------------------
@@ -212,7 +332,17 @@ local function buildPanel()
 	hint:SetPoint("TOPLEFT", LEFT, -38)
 	hint:SetText("Click a marker to assign · click a key box to bind (right-click clears)")
 
-	local y = -64
+	local modeLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	modeLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", LEFT, -62)
+	modeLabel:SetText("Recording mode")
+
+	local modeX = LEFT
+	for _, mode in ipairs(ns.MODES) do
+		buildModeRow(mode, modeX, -84)
+		modeX = modeX + 26 + #mode.name * 7 + 18
+	end
+
+	local y = -128
 	for _, dir in ipairs(ns.QUADRANTS) do
 		local label = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 		label:SetPoint("TOPLEFT", panel, "TOPLEFT", LEFT, y)
@@ -230,7 +360,14 @@ local function buildPanel()
 		y = y - 52
 	end
 
-	-- Reset row: label on the left, its keybind box aligned with the others.
+	-- Capture and reset rows: labels on the left, key boxes aligned with the
+	-- quadrant ones above.
+	local captureBtn = buildKeybindButton(CAPTURE_COMMAND, KB_X, y - 2)
+	local captureLbl = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	captureLbl:SetPoint("LEFT", captureBtn, "LEFT", -(KB_X - LEFT), 0)
+	captureLbl:SetText("Quadrant detection")
+	y = y - 30
+
 	local resetBtn = buildKeybindButton(RESET_COMMAND, KB_X, y - 2)
 	local resetLbl = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	resetLbl:SetPoint("LEFT", resetBtn, "LEFT", -(KB_X - LEFT), 0)
@@ -269,6 +406,11 @@ local function buildPanel()
 	restrictCB = buildCheckbox("Only show the HUD inside the Delve Nemesis map", y - 142,
 		ns.GetRestrictToMap, ns.SetRestrictToMap)
 
+	blockInputCB = buildCheckbox("Ignore board clicks and quadrant keybinds", y - 168,
+		ns.GetBlockManualInput, ns.SetBlockManualInput)
+
+	buildAnnounceColumn()
+
 	panel:SetScript("OnShow", Options.Refresh)
 	panel:SetScript("OnHide", stopListening)
 end
@@ -283,6 +425,11 @@ function Options.Refresh()
 		end
 	end
 	refreshKeybinds()
+	local mode = ns.GetMode()
+	for key, b in pairs(modeButtons) do
+		b:SetChecked(key == mode)
+	end
+	blockInputCB:SetChecked(blockInputCB.getter())
 	showCB:SetChecked(showCB.getter())
 	lockCB:SetChecked(lockCB.getter())
 	autoResetCB:SetChecked(autoResetCB.getter())
@@ -291,6 +438,31 @@ function Options.Refresh()
 	timerSlider:SetValue(secs)            -- fires OnValueChanged -> updates label + db
 	timerValue:SetText(secs .. "s")       -- explicit, in case the value didn't change
 	restrictCB:SetChecked(restrictCB.getter())
+
+	local style = ns.GetAnnounceStyle()
+	for key, b in pairs(styleButtons) do
+		b:SetChecked(key == style)
+	end
+
+	local speaking = ns.GetTTSEnabled()
+	ttsCB:SetChecked(speaking)
+	overlapCB:SetChecked(overlapCB.getter())
+	bellCB:SetChecked(bellCB.getter())
+	popupCB:SetChecked(popupCB.getter())
+	subtitleCB:SetChecked(subtitleCB.getter())
+	radarCB:SetChecked(radarCB.getter())
+	blinkCB:SetChecked(blinkCB.getter())
+	blinkCB:SetEnabled(ns.GetRadarEnabled())   -- nothing to blink without the radar
+
+	local volume = ns.GetTTSVolume()
+	volumeSlider:SetValue(volume)
+	volumeValue:SetText(tostring(volume))
+
+	-- The voice controls only mean anything while the voice is on, and the
+	-- next-up line only while the popup is drawn at all.
+	volumeSlider:SetEnabled(speaking)
+	overlapCB:SetEnabled(speaking)
+	subtitleCB:SetEnabled(ns.GetPopupEnabled())
 end
 
 function Options.Open()
