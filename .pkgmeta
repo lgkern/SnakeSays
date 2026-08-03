@@ -12,10 +12,19 @@ package-as: SnakeSays
 enable-nolib-creation: no
 
 # Dev-only files that must NOT ship to users. (Media/ is intentionally kept — the wedge
-# textures are part of the addon. The packager already drops .git and strips .pkgmeta.)
+# textures are part of the addon, and so is snakesays.tga, which the .toc names as its
+# IconTexture. The packager already drops .git and strips .pkgmeta.)
+#
+# Only what the .toc loads needs to be here; everything else is dead weight in the
+# player's AddOns folder. The test suite is the big one — it is a third of the tracked
+# Lua in the project and none of it is listed in the .toc, so it would have shipped and
+# never run.
 ignore:
   - .github
   - .luacheckrc
   - .gitignore
   - .claude
   - tools
+  - spec
+  - .busted
+  - README.md
