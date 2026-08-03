@@ -200,3 +200,7 @@ coordinates ship with the addon. If they're ever wrong, stand in the middle of
 the room and run `/ss measure`. This will record a new center. `/ss measure
 reset` restores the shipped values.
 
+## Detection Module
+
+The detection module was inspired by [Rothirr's Azta'rec Helper](https://www.curseforge.com/wow/addons/aztarec-helper).
+
