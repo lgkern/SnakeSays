@@ -37,8 +37,9 @@ local iconButtons = {}    -- dir -> { markerId -> button }
 local keybindButtons = {} -- command -> button
 local modeButtons = {}    -- mode key -> radio button
 local styleButtons = {}   -- announce style key -> radio button
+local arrivalButtons = {} -- arrival cue key -> radio button
 local showCB, lockCB, autoResetCB, timerSlider, timerValue, restrictCB, blockInputCB
-local ttsCB, overlapCB, bellCB, popupCB, subtitleCB, radarCB, blinkCB
+local ttsCB, overlapCB, popupCB, subtitleCB, radarCB, blinkCB
 local volumeSlider, volumeValue
 local scaleSliders = {}   -- the three window-size sliders, refreshed together
 local capture             -- fullscreen key-capture overlay (created on demand)
@@ -290,14 +291,14 @@ local function buildAnnounceColumn()
 	-- What the voice and the popup call things. Two radios rather than a
 	-- checkbox: "say marks instead of colours" is a choice, not an on/off.
 	local styleLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-	styleLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", ANNOUNCE_X + 24, -112)
+	styleLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", ANNOUNCE_X + 24, -110)
 	styleLabel:SetText("Call them by:")
 
 	local styles = { { key = "color", label = "Colour" }, { key = "marker", label = "Marker" } }
 	local styleX = ANNOUNCE_X + 24
 	for _, style in ipairs(styles) do
 		local b = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
-		b:SetPoint("TOPLEFT", panel, "TOPLEFT", styleX, -132)
+		b:SetPoint("TOPLEFT", panel, "TOPLEFT", styleX, -128)
 		b:SetScript("OnClick", function()
 			ns.SetAnnounceStyle(style.key)
 			Options.Refresh()
@@ -310,12 +311,12 @@ local function buildAnnounceColumn()
 	end
 
 	local volumeLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-	volumeLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", ANNOUNCE_X + 24, -164)
+	volumeLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", ANNOUNCE_X + 24, -158)
 	volumeLabel:SetText("Voice volume:")
 
 	volumeSlider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
 	volumeSlider:SetWidth(180)
-	volumeSlider:SetPoint("TOPLEFT", panel, "TOPLEFT", ANNOUNCE_X + 28, -190)
+	volumeSlider:SetPoint("TOPLEFT", panel, "TOPLEFT", ANNOUNCE_X + 28, -184)
 	volumeSlider:SetMinMaxValues(0, 100)
 	volumeSlider:SetValueStep(5)
 	volumeSlider:SetObeyStepOnDrag(true)
@@ -332,31 +333,55 @@ local function buildAnnounceColumn()
 		volumeValue:SetText(tostring(value))
 	end)
 
-	overlapCB = buildCheckbox("Let calls overlap each other", -216,
+	overlapCB = buildCheckbox("Let calls overlap each other", -208,
 		ns.GetTTSOverlap, ns.SetTTSOverlap, ANNOUNCE_X)
-	bellCB = buildCheckbox("Ring a bell when you reach safety", -242,
-		ns.GetBellEnabled, ns.SetBellEnabled, ANNOUNCE_X)
-	popupCB = buildCheckbox("Show the call on screen", -268,
+	-- Three radios rather than a checkbox: "make a noise" and "tell me out loud"
+	-- are different wants, and neither is a louder version of the other.
+	--
+	-- Packed by measured width rather than on a fixed pitch. This column is only
+	-- so wide, and three labels of the length these have on a hundred-pixel
+	-- pitch put the last one off the edge of the panel -- which is not something
+	-- a constant can be tuned to avoid at every font size.
+	local arrivalLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	arrivalLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", ANNOUNCE_X + 24, -234)
+	arrivalLabel:SetText("When reach the safe slice:")
+
+	local RADIO_W, TEXT_GAP, GROUP_GAP = 20, 4, 14
+	local arrivalX = ANNOUNCE_X
+	for _, cue in ipairs(ns.ARRIVAL_CUES) do
+		local b = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
+		b:SetPoint("TOPLEFT", panel, "TOPLEFT", arrivalX, -252)
+		b:SetScript("OnClick", function()
+			ns.SetArrivalCue(cue.key)
+			Options.Refresh()
+		end)
+		local text = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		text:SetPoint("LEFT", b, "RIGHT", TEXT_GAP, 0)
+		text:SetText(cue.name)
+		arrivalButtons[cue.key] = b
+		arrivalX = arrivalX + RADIO_W + TEXT_GAP + (text:GetStringWidth() or 60) + GROUP_GAP
+	end
+	popupCB = buildCheckbox("Show the call on screen", -278,
 		ns.GetPopupEnabled, ns.SetPopupEnabled, ANNOUNCE_X)
-	subtitleCB = buildCheckbox("Include the next-up line", -294,
+	subtitleCB = buildCheckbox("Include the next-up line", -304,
 		ns.GetPopupSubtitle, ns.SetPopupSubtitle, ANNOUNCE_X + 24)
 
-	radarCB = buildCheckbox("Show the rotating position radar", -320,
+	radarCB = buildCheckbox("Show the rotating position radar", -330,
 		ns.GetRadarEnabled, ns.SetRadarEnabled, ANNOUNCE_X)
-	blinkCB = buildCheckbox("Blink the safe slice until you reach it", -346,
+	blinkCB = buildCheckbox("Blink the safe slice until you reach it", -356,
 		ns.GetTargetBlink, ns.SetTargetBlink, ANNOUNCE_X + 24)
 
 	local moveHint = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-	moveHint:SetPoint("TOPLEFT", panel, "TOPLEFT", ANNOUNCE_X + 24, -372)
+	moveHint:SetPoint("TOPLEFT", panel, "TOPLEFT", ANNOUNCE_X + 24, -382)
 	moveHint:SetText("Unlock the HUD to drag the call and the radar.")
 
 	local sizeHeading = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	sizeHeading:SetPoint("TOPLEFT", panel, "TOPLEFT", ANNOUNCE_X, -398)
+	sizeHeading:SetPoint("TOPLEFT", panel, "TOPLEFT", ANNOUNCE_X, -406)
 	sizeHeading:SetText("Window size")
 
-	buildScaleSlider("Board", ANNOUNCE_X + 28, -428, ns.GetHUDScale, ns.SetHUDScale)
-	buildScaleSlider("Position radar", ANNOUNCE_X + 28, -466, ns.GetRadarScale, ns.SetRadarScale)
-	buildScaleSlider("On-screen call", ANNOUNCE_X + 28, -504, ns.GetPopupScale, ns.SetPopupScale)
+	buildScaleSlider("Board", ANNOUNCE_X + 28, -436, ns.GetHUDScale, ns.SetHUDScale)
+	buildScaleSlider("Position radar", ANNOUNCE_X + 28, -474, ns.GetRadarScale, ns.SetRadarScale)
+	buildScaleSlider("On-screen call", ANNOUNCE_X + 28, -512, ns.GetPopupScale, ns.SetPopupScale)
 end
 
 -- ---------------------------------------------------------------------------
@@ -487,10 +512,14 @@ function Options.Refresh()
 		b:SetChecked(key == style)
 	end
 
+	local cue = ns.GetArrivalCue()
+	for key, b in pairs(arrivalButtons) do
+		b:SetChecked(key == cue)
+	end
+
 	local speaking = ns.GetTTSEnabled()
 	ttsCB:SetChecked(speaking)
 	overlapCB:SetChecked(overlapCB.getter())
-	bellCB:SetChecked(bellCB.getter())
 	popupCB:SetChecked(popupCB.getter())
 	subtitleCB:SetChecked(subtitleCB.getter())
 	radarCB:SetChecked(radarCB.getter())

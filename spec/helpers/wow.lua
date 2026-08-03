@@ -67,6 +67,11 @@ M.hostile = {}       -- unit token -> bool
 M.guids = {}         -- unit token -> GUID string
 M.auras = {}         -- unit token -> { {name, duration, expirationTime, filter}, ... }
 M.casts = {}         -- unit token -> { spellID, startMS, endMS } or nil
+M.channels = {}      -- unit token -> { spellID, name, startMS, endMS } or nil
+
+-- Retail refuses the aura API outright to a tainted caller in some content:
+-- not "no auras", but an error out of the call itself.
+M.aurasBlocked = false
 
 -- ---------------------------------------------------------------------------
 -- Frames
@@ -295,38 +300,116 @@ end
 
 -- Put an aura on `unit` and fire UNIT_AURA. `duration` is what the client
 -- declares; `expirationTime` follows from the clock.
-function M.applyAura(unit, name, duration, filter)
+--
+-- opts:
+--   filter       "HELPFUL" (default) or "HARMFUL"
+--   silent       do not fire UNIT_AURA, so only a poll can find it
+--   secret       hand the name and the timings back as secret values
+--   startedAgo   backdate the expiry, as if the aura had already been up this
+--                long by the time anything looked
+function M.applyAura(unit, name, duration, opts)
+	opts = opts or {}
 	M.auras[unit] = M.auras[unit] or {}
-	table.insert(M.auras[unit], {
+
+	local expires = clock + (duration or 0) - (opts.startedAgo or 0)
+	local entry = {
 		name = name,
 		duration = duration,
-		expirationTime = clock + (duration or 0),
-		filter = filter or "HELPFUL",
+		expirationTime = expires,
+		filter = opts.filter or "HELPFUL",
 		spellId = 0,
 		auraInstanceID = #M.auras[unit] + 1,
-	})
-	M.fire("UNIT_AURA", unit)
+	}
+	if opts.secret then
+		entry.name = M.secret(name)
+		entry.duration = M.secret(duration)
+		entry.expirationTime = M.secret(expires)
+	end
+
+	table.insert(M.auras[unit], entry)
+	if not opts.silent then M.fire("UNIT_AURA", unit) end
 end
 
-function M.removeAura(unit, name)
+-- Start a channel on `unit` and fire the events the client fires for one. This
+-- is how the boss carries the round: a channel that runs for exactly as long as
+-- the waves take.
+--
+-- opts:
+--   secret     the event's spell id comes back secret
+--   nameless   UnitChannelInfo's name comes back secret too
+--   timeless   its start and end times come back secret, leaving nothing usable
+--   startedAgo backdate it, as if it had been running before anything looked
+function M.startChannel(unit, spellID, duration, opts)
+	opts = opts or {}
+	local name = opts.name or "Sermon of Ula'Tek"
+	local startMS = (clock - (opts.startedAgo or 0)) * 1000
+	local endMS = startMS + duration * 1000
+
+	M.channels[unit] = {
+		spellID = spellID,
+		name = opts.nameless and M.secret(name) or name,
+		startMS = opts.timeless and M.secret(startMS) or startMS,
+		endMS = opts.timeless and M.secret(endMS) or endMS,
+	}
+
+	local castGUID = ("Chan-%s-%d"):format(unit, math.floor(startMS))
+	M.fire("UNIT_SPELLCAST_CHANNEL_START", unit, castGUID,
+		opts.secret and M.secret(spellID) or spellID)
+end
+
+function M.stopChannel(unit, opts)
+	opts = opts or {}
+	M.channels[unit] = nil
+	if not opts.silent then
+		M.fire("UNIT_SPELLCAST_CHANNEL_STOP", unit, nil, nil)
+	end
+end
+
+function M.removeAura(unit, name, opts)
+	opts = opts or {}
 	local list = M.auras[unit]
 	if list then
 		for i = #list, 1, -1 do
-			if list[i].name == name then table.remove(list, i) end
+			local held = list[i].name
+			-- A secret name is a table here, so it never compares equal to the
+			-- string; reach past it to the value it is standing in for.
+			if held == name or (type(held) == "table" and rawget(held, "__value") == name) then
+				table.remove(list, i)
+			end
 		end
 	end
-	M.fire("UNIT_AURA", unit)
+	if not opts.silent then M.fire("UNIT_AURA", unit) end
 end
 
--- Start a cast on `unit` and fire UNIT_SPELLCAST_START. Pass `castGUID = false`
--- to model a client that does not hand one over.
-function M.startCast(unit, spellID, duration, castGUID)
+-- Start a cast on `unit` and fire UNIT_SPELLCAST_START.
+--
+-- opts:
+--   castGUID   false for a client that hands none over; a string to pin it
+--   secret     the event's spell id comes back as a secret value
+--   nameless   the cast bar's spell name is secret too, so the cast cannot be
+--              identified by any means at all
+--   name       what the cast bar says (default: the wave call)
+--   timeless   the cast bar's start and end times are secret as well, leaving
+--              nothing about the cast that can be used as a key
+function M.startCast(unit, spellID, duration, opts)
+	opts = opts or {}
+	local name = opts.name or "Echo of Ula'tek"
 	local startMS = clock * 1000
-	M.casts[unit] = { spellID = spellID, startMS = startMS, endMS = startMS + duration * 1000 }
+	local endMS = startMS + duration * 1000
+	M.casts[unit] = {
+		spellID = spellID,
+		startMS = opts.timeless and M.secret(startMS) or startMS,
+		endMS = opts.timeless and M.secret(endMS) or endMS,
+		name = opts.nameless and M.secret(name) or name,
+	}
+
+	local castGUID = opts.castGUID
 	if castGUID == nil then
 		castGUID = ("Cast-%s-%d"):format(unit, math.floor(startMS))
 	end
-	M.fire("UNIT_SPELLCAST_START", unit, castGUID or nil, spellID)
+
+	M.fire("UNIT_SPELLCAST_START", unit, castGUID or nil,
+		opts.secret and M.secret(spellID) or spellID)
 	return castGUID
 end
 
@@ -354,6 +437,8 @@ function M.reset()
 	M.guids = {}
 	M.auras = {}
 	M.casts = {}
+	M.channels = {}
+	M.aurasBlocked = false
 
 	_G.SnakeSaysDB = nil
 
@@ -416,6 +501,9 @@ function M.reset()
 	-- and stop at the first gap.
 	_G.C_UnitAuras = {
 		GetAuraDataByIndex = function(unit, index, filter)
+			if M.aurasBlocked then
+				error("GetAuraDataByIndex(): Auras cannot be accessed when secret while tainted", 2)
+			end
 			local list = M.auras[unit]
 			if not list then return nil end
 			local seen = 0
@@ -433,7 +521,16 @@ function M.reset()
 		local cast = M.casts[unit]
 		if not cast then return nil end
 		-- name, text, texture, startTimeMS, endTimeMS, ...
-		return "Echo of Ula'tek", nil, nil, cast.startMS, cast.endMS
+		return cast.name, nil, nil, cast.startMS, cast.endMS
+	end
+
+	-- name, text, texture, startTimeMS, endTimeMS, isTradeSkill,
+	-- notInterruptible, spellID
+	_G.UnitChannelInfo = function(unit)
+		local channel = M.channels[unit]
+		if not channel then return nil end
+		return channel.name, nil, nil, channel.startMS, channel.endMS,
+			false, false, channel.spellID
 	end
 
 	_G.issecretvalue = isSecret
@@ -453,6 +550,10 @@ function M.reset()
 		GetTtsVoices = function()
 			return { { voiceID = 0, name = "Default" }, { voiceID = 1, name = "Alt" } }
 		end,
+		-- This client's signature, confirmed by ear against the alternative: rate
+		-- third, then volume, then overlap. Newer clients grew a `destination`
+		-- argument in the rate's slot; this one has no VoiceTtsDestination enum
+		-- at all, and speaking with that order is accepted and then silent.
 		SpeakText = function(voiceID, text, rate, volume, overlap)
 			table.insert(M.spoken, {
 				voiceID = voiceID, text = text,
@@ -463,6 +564,11 @@ function M.reset()
 
 	_G.C_TTSSettings = { GetSpeechRate = function() return 0 end }
 
+	_G.Enum = _G.Enum or {}
+	_G.Enum.VoiceTtsDestination = {
+		LocalPlayback = 0, RemoteTransmission = 1, QueuedLocalPlayback = 2,
+	}
+
 	_G.PlaySoundFile = function(file, channel)
 		table.insert(M.sounds, { file = file, channel = channel })
 		return true, #M.sounds
@@ -471,7 +577,13 @@ function M.reset()
 		table.insert(M.sounds, { kit = kit, channel = channel })
 		return true, #M.sounds
 	end
-	_G.SOUNDKIT = setmetatable({}, { __index = function(_, k) return "SOUNDKIT." .. k end })
+	-- Real SOUNDKIT entries are numeric ids, and the addon type-checks them
+	-- before use, so handing back a string here would exercise the wrong branch.
+	_G.SOUNDKIT = setmetatable({}, { __index = function(_, k)
+		local id = 10000
+		for i = 1, #k do id = id + k:byte(i) end
+		return id
+	end })
 
 	_G.StaticPopupDialogs = {}
 	_G.StaticPopup_Show = function(name, ...)

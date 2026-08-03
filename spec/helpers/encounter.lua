@@ -16,8 +16,9 @@ local M = {}
 M.NORMAL = 3508
 M.HARD   = 3525
 
-M.SERMON = "Sermon of Ula'tek"
-M.ECHO   = 1288125
+M.SERMON       = "Sermon of Ula'tek"
+M.SERMON_SPELL = 1306239
+M.ECHO         = 1288125
 
 -- Slot length per difficulty, from the recorded aura durations.
 M.SLOT = { [M.NORMAL] = 3.503, [M.HARD] = 3.003 }
@@ -47,10 +48,13 @@ local ADD_GUID  = "Creature-0-0-3079-0-224002-0000ADD1"
 -- Standing somewhere
 -- ---------------------------------------------------------------------------
 
+-- Walk into the delve, zone event and all -- which is what the windows and the
+-- mode prompt actually watch for.
 function M.inDelve(ns)
 	wow.instanceMapID = ns.ROOM.instanceMapID
 	wow.zoneText = "Venomfall Deeps"
 	wow.uiMapID = ns.ROOM.uiMapID
+	wow.fire("ZONE_CHANGED_NEW_AREA")
 end
 
 -- Move the player into `quadrant`, or to the middle of the room when nil.
@@ -131,15 +135,34 @@ end
 --   length      override the aura duration, for rounds that are not whole
 --   arriveAt    fraction of the slot spent still in the previous quarter
 --   unit        which boss carries the aura (default boss1)
+-- `opts.via` picks how the boss carries the round:
+--   "channel"  what retail actually does, and the default
+--   "aura"     the aura the spec describes, for the client that will answer it
+function M.beginSermon(unit, length, opts)
+	if (opts.via or "channel") == "aura" then
+		wow.applyAura(unit, M.SERMON, length, opts)
+	else
+		wow.startChannel(unit, M.SERMON_SPELL, length, opts)
+	end
+end
+
+function M.endSermon(unit, opts)
+	if (opts.via or "channel") == "aura" then
+		wow.removeAura(unit, M.SERMON, opts)
+	else
+		wow.stopChannel(unit, opts)
+	end
+end
+
 function M.showRound(ns, path, opts)
 	opts = opts or {}
 	local unit = opts.unit or "boss1"
 	local slot = opts.slot or M.SLOT[opts.difficulty or M.HARD]
 	local arriveAt = opts.arriveAt or 0.5
 	local length = opts.length or slot * #path
-	local step = length / #path      -- the walk always covers the whole aura
+	local step = length / #path      -- the walk always covers the whole round
 
-	wow.applyAura(unit, M.SERMON, length)
+	M.beginSermon(unit, length, opts)
 
 	for _, quadrant in ipairs(path) do
 		wow.advance(step * arriveAt)
@@ -147,7 +170,7 @@ function M.showRound(ns, path, opts)
 		wow.advance(step * (1 - arriveAt))
 	end
 
-	wow.removeAura(unit, M.SERMON)
+	M.endSermon(unit, opts)
 	return ns
 end
 
@@ -158,7 +181,7 @@ function M.showRoundCutShort(ns, path, after, opts)
 	local unit = opts.unit or "boss1"
 	local slot = opts.slot or M.SLOT[opts.difficulty or M.HARD]
 
-	wow.applyAura(unit, M.SERMON, opts.length or slot * #path)
+	M.beginSermon(unit, opts.length or slot * #path, opts)
 	local spent = 0
 	for _, quadrant in ipairs(path) do
 		if spent + slot > after then break end
@@ -168,7 +191,7 @@ function M.showRoundCutShort(ns, path, after, opts)
 		spent = spent + slot
 	end
 	wow.advance(math.max(0, after - spent))
-	wow.removeAura(unit, M.SERMON)
+	M.endSermon(unit, opts)
 	return ns
 end
 
@@ -189,7 +212,11 @@ function M.callRound(ns, count, opts)
 		if type(castTime) == "table" then castTime = castTime[wave] or castTime[#castTime] end
 		castTime = castTime or M.CAST.normal
 
-		local guid = wow.startCast(unit, M.ECHO, castTime, opts.castGUID)
+		local guid = wow.startCast(unit, M.ECHO, castTime, {
+			castGUID = opts.castGUID,
+			secret   = opts.secret,
+			nameless = opts.nameless,
+		})
 		for _, extra in ipairs(opts.echoOn or {}) do
 			wow.casts[extra] = wow.casts[unit]
 			wow.fire("UNIT_SPELLCAST_START", extra, guid, M.ECHO)

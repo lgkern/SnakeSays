@@ -334,11 +334,51 @@ function ns.SetPopupEnabled(v) db().popupEnabled = not not v end
 function ns.GetPopupSubtitle() return flag("popupSubtitle") end
 function ns.SetPopupSubtitle(v) db().popupSubtitle = not not v end
 
-function ns.GetBellEnabled() return flag("bellEnabled") end
-function ns.SetBellEnabled(v) db().bellEnabled = not not v end
+-- ---------------------------------------------------------------------------
+-- Reaching the safe quarter
+--
+-- Confirmation that the player made it, without them having to look away from
+-- the fight. Three answers rather than an on/off, because "tell me out loud"
+-- and "make a noise" are different wants and neither is a louder version of the
+-- other.
+-- ---------------------------------------------------------------------------
+
+ns.ARRIVAL_CUES = {
+	{ key = "none", name = "None" },
+	{ key = "bell", name = "Ring a Bell" },
+	{ key = "say",  name = "Say Safe" },
+}
+
+local VALID_CUE = {}
+for _, cue in ipairs(ns.ARRIVAL_CUES) do VALID_CUE[cue.key] = true end
+
+function ns.GetArrivalCue()
+	local stored = db().arrivalCue
+	if VALID_CUE[stored] then return stored end
+	-- Carried over from when this was a single bell toggle, so an existing
+	-- install keeps the answer it already gave.
+	if db().bellEnabled == false then return "none" end
+	return "bell"
+end
+
+function ns.SetArrivalCue(key)
+	if not VALID_CUE[key] then return false end
+	db().arrivalCue = key
+	return true
+end
+
+-- The old toggle, kept as a view onto the new setting so nothing that only
+-- cares whether the bell rings has to know about the rest.
+function ns.GetBellEnabled() return ns.GetArrivalCue() == "bell" end
+function ns.SetBellEnabled(v) ns.SetArrivalCue(v and "bell" or "none") end
 
 function ns.GetTargetBlink() return flag("targetBlink") end
 function ns.SetTargetBlink(v) db().targetBlink = not not v end
+
+-- Step-by-step chat output from the detector. Off, and not in DEFAULTS, so it
+-- can only ever be on because someone asked for it.
+function ns.GetDebug() return db().debug == true end
+function ns.SetDebug(v) db().debug = not not v end
 
 -- What the announcer calls a quadrant: its marker's colour, or the marker's own
 -- name when the player prefers to hear marks.

@@ -60,6 +60,10 @@ local function help()
 	out("                 `/ss sim record` records from where you stand")
 	out("                 `/ss sim stop` ends it")
 	out("  /ss status     report what the addon currently sees")
+	out("  /ss auras      list the auras it can see on the boss right now")
+	out("  /ss probe      report which of the client's reads still work in here")
+	out("  /ss sound      test the voice and the bell, and say what the client did")
+	out("  /ss debug      step-by-step detection output in chat")
 	out("  /ss show | hide")
 	out("  /ss toggle     toggle the HUD")
 	out("  /ss lock | unlock")
@@ -140,6 +144,11 @@ local function statusCommand()
 	out(("  encounter: armed=%s recording=%s replaying=%s step=%d of %d"):format(
 		yes(ns.Detector.IsArmed()), yes(ns.Detector.IsRecording()),
 		yes(ns.Detector.IsReplaying()), ns.Detector.EchoIndex(), ns.Seq.Count()))
+	local function timing(diff)
+		return ("%.3fs%s"):format(ns.SlotLength(diff), ns.IsSlotLearned(diff) and " (learned)" or "")
+	end
+	out(("  wave timing: normal %s, hard %s"):format(timing("normal"), timing("hard")))
+
 	local grid = ns.Detector.ActiveGrid()
 	if grid then
 		out(("  round in progress: wave %d of %d, %.3fs slots (%s)"):format(
@@ -158,6 +167,18 @@ local handlers = {
 	mode        = modeCommand,
 	measure     = measureCommand,
 	status      = statusCommand,
+	auras       = function()
+		out("auras the addon can see:")
+		ns.Detector.ScanAuras()
+	end,
+	probe       = function() ns.Detector.Probe() end,
+	sound       = function() ns.Announce.SelfTest() end,
+	debug       = function(arg)
+		if arg == "on" then ns.SetDebug(true)
+		elseif arg == "off" then ns.SetDebug(false)
+		else ns.SetDebug(not ns.GetDebug()) end
+		out("detection output: " .. (ns.GetDebug() and "|cff44ff44on|r" or "off"))
+	end,
 	sim         = function(arg)
 		if arg == "stop" then
 			if not ns.Sim.Stop() then out("no practice run is going.") end
