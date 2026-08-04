@@ -34,9 +34,8 @@ local _, ns = ...
 -- and to say which way it got there when `/ss debug` is on.
 --
 -- The replay at the bottom is the seam the rest of the addon hangs off: Announce
--- and the room view subscribe to it at load, and the practice run drives it
--- directly. Nothing downstream knows or cares whether a step came from the boss
--- or from `/ss sim`.
+-- subscribes to it at load, and the practice run drives it directly. Nothing
+-- downstream knows or cares whether a step came from the boss or from `/ss sim`.
 --
 -- Detection inspired by Rothirr's Azta'rec Helper: https://www.curseforge.com/wow/addons/aztarec-helper
 --

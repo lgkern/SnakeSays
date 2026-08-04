@@ -8,7 +8,6 @@ describe("window sizes", function()
 	it("ship at 100%", function()
 		local ns = addon.boot()
 		assert.equals(1, ns.GetHUDScale())
-		assert.equals(1, ns.GetRadarScale())
 		assert.equals(1, ns.GetPopupScale())
 	end)
 
@@ -16,12 +15,6 @@ describe("window sizes", function()
 		local ns = addon.boot()
 		ns.SetHUDScale(1.4)
 		assert.equals(1.4, ns.HUD.GetFrame():GetScale())
-	end)
-
-	it("apply to the radar", function()
-		local ns = addon.boot()
-		ns.SetRadarScale(0.75)
-		assert.equals(0.75, ns.Radar.GetFrame():GetScale())
 	end)
 
 	it("apply to the on-screen call", function()
@@ -33,7 +26,6 @@ describe("window sizes", function()
 	it("are independent of each other", function()
 		local ns = addon.boot()
 		ns.SetHUDScale(1.5)
-		assert.equals(1, ns.Radar.GetFrame():GetScale())
 		assert.equals(1, ns.Announce.GetPopup():GetScale())
 	end)
 
@@ -55,9 +47,8 @@ describe("window sizes", function()
 	-- a stored size has to be picked up by the build rather than only by the
 	-- setter that wrote it.
 	it("survive a reload", function()
-		local ns = addon.boot({ db = { hudScale = 1.25, radarScale = 0.6, popupScale = 1.75 } })
+		local ns = addon.boot({ db = { hudScale = 1.25, popupScale = 1.75 } })
 		assert.equals(1.25, ns.HUD.GetFrame():GetScale())
-		assert.equals(0.6, ns.Radar.GetFrame():GetScale())
 		assert.equals(1.75, ns.Announce.GetPopup():GetScale())
 	end)
 
@@ -71,9 +62,9 @@ describe("window sizes", function()
 		local ns = addon.boot()
 		assert.has_no.errors(function() ns.Options.Refresh() end)
 
-		ns.SetRadarScale(1.3)
+		ns.SetPopupScale(1.3)
 		ns.Options.Refresh()
-		assert.equals(1.3, ns.GetRadarScale())          -- refresh must not overwrite it
-		assert.equals(1.3, ns.Radar.GetFrame():GetScale())
+		assert.equals(1.3, ns.GetPopupScale())          -- refresh must not overwrite it
+		assert.equals(1.3, ns.Announce.GetPopup():GetScale())
 	end)
 end)

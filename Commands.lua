@@ -77,7 +77,6 @@ local function help()
 	out("  /ss            open options (markers, HUD, keybinds)")
 	out("  /ss mode       show the mode; `/ss mode auto|semi|manual` sets it")
 	out("  /ss measure    re-pin the room centre to where you stand")
-	out("  /ss radar      toggle the rotating position radar")
 	out("  /ss sim        demo run anywhere; `/ss sim 7` for a 7-wave phase")
 	out("                 `/ss sim record` records from where you stand")
 	out("                 `/ss sim stop` ends it")
@@ -158,9 +157,8 @@ local function statusCommand()
 	end
 	out("  facing readable: " .. yes(ns.Position.Facing() ~= nil))
 
-	out(("  board: shown=%s visible=%s | radar: on=%s visible=%s"):format(
-		yes(ns.IsShown()), yes(ns.HUD.IsVisible()),
-		yes(ns.GetRadarEnabled()), yes(ns.Radar.IsShown())))
+	out(("  board: shown=%s visible=%s"):format(
+		yes(ns.IsShown()), yes(ns.HUD.IsVisible())))
 	out("  only inside the delve map: " .. yes(ns.GetRestrictToMap()))
 
 	out(("  encounter: armed=%s recording=%s replaying=%s step=%d of %d"):format(
@@ -208,10 +206,6 @@ local handlers = {
 			ns.Sim.Start(arg ~= "" and arg or nil)
 		end
 	end,
-	radar       = function()
-		ns.SetRadarEnabled(not ns.GetRadarEnabled())
-		out("position radar: " .. (ns.GetRadarEnabled() and "on" or "off"))
-	end,
 	toggle      = function() ns.SetShown(not ns.IsShown()) end,
 	show        = function() ns.SetShown(true) end,
 	hide        = function() ns.SetShown(false) end,
@@ -220,7 +214,6 @@ local handlers = {
 	reset       = function() ns.Seq.Reset() end,
 	recenter    = function()
 		ns.ClearPosition()
-		ns.Radar.ClearPosition()      -- back to riding along with the board
 		ns.Announce.ClearPopupPosition()
 		out("windows moved back to their default places.")
 	end,

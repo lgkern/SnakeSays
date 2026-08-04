@@ -59,9 +59,8 @@ ns.ROOM = {
 	instanceMapID = 3079,
 	uiMapID       = 2634,
 
-	center     = { a = 181.80, b = 0.60 },
-	radius     = 38.5,   -- yards, half the room's narrow (east-west) span
-	drawMargin = 10,     -- yards of floor shown past the wall by the room view
+	center = { a = 181.80, b = 0.60 },
+	radius = 38.5,   -- yards, half the room's narrow (east-west) span
 }
 
 -- The delve this all happens in. Matched on the name as well as the instance id
@@ -115,11 +114,9 @@ local DEFAULTS = {
 	popupSubtitle = true,     -- the "... next" line under the main call
 	popupPosition = nil,      -- nil => centre top
 	bellEnabled = true,
-	targetBlink = true,       -- pulse the safe slice until the player is standing in it
 
 	-- Window sizes, as frame-scale multipliers (1 = as shipped).
 	hudScale = 1,
-	radarScale = 1,
 	popupScale = 1,
 }
 
@@ -197,7 +194,6 @@ end
 function ns.SetRestrictToMap(v)
 	db().restrictToMap = not not v
 	if ns.HUD then ns.HUD.ApplyShown() end
-	if ns.Radar then ns.Radar.ApplyShown() end
 end
 
 function ns.GetMapID() return db().mapID or DEFAULTS.mapID end
@@ -215,10 +211,9 @@ end
 -- Visibility override
 --
 -- Lets something temporarily lift the "only inside the delve" gate on the
--- windows -- the practice run needs them on screen out in the world. It lifts
--- the *location* gate only: a board the player has hidden or a radar they have
--- switched off stays that way, since those are statements about wanting the
--- feature at all.
+-- board -- the practice run needs it on screen out in the world. It lifts the
+-- *location* gate only: a board the player has hidden stays hidden, since that
+-- is a statement about wanting the feature at all.
 --
 -- Session state, not saved: a practice run must never outlive a reload.
 -- ---------------------------------------------------------------------------
@@ -230,7 +225,6 @@ function ns.HasVisibilityOverride() return visibilityOverride end
 function ns.SetVisibilityOverride(v)
 	visibilityOverride = not not v
 	if ns.HUD then ns.HUD.ApplyShown() end
-	if ns.Radar then ns.Radar.ApplyShown() end
 end
 
 -- Whether we are standing in Venomfall Deeps. Two independent signals, either
@@ -372,9 +366,6 @@ end
 function ns.GetBellEnabled() return ns.GetArrivalCue() == "bell" end
 function ns.SetBellEnabled(v) ns.SetArrivalCue(v and "bell" or "none") end
 
-function ns.GetTargetBlink() return flag("targetBlink") end
-function ns.SetTargetBlink(v) db().targetBlink = not not v end
-
 -- Step-by-step chat output from the detector. Off, and not in DEFAULTS, so it
 -- can only ever be on because someone asked for it.
 function ns.GetDebug() return db().debug == true end
@@ -408,9 +399,8 @@ end
 -- Window sizes
 --
 -- One multiplier per window rather than one shared one: the board is a click
--- target, the radar is read at a glance out of the corner of the eye, and the
--- on-screen call is read head-on. A single size that suits one of them is
--- usually wrong for the other two.
+-- target and the on-screen call is read head-on, so a size that suits one is
+-- usually wrong for the other.
 --
 -- Stored as a scale factor and applied with SetScale, so nothing here has to
 -- re-lay-out: the frames keep their proportions and their anchors.
@@ -430,12 +420,6 @@ function ns.GetHUDScale() return ns.ClampScale(db().hudScale or DEFAULTS.hudScal
 function ns.SetHUDScale(v)
 	db().hudScale = ns.ClampScale(v)
 	if ns.HUD then ns.HUD.ApplyScale() end
-end
-
-function ns.GetRadarScale() return ns.ClampScale(db().radarScale or DEFAULTS.radarScale) end
-function ns.SetRadarScale(v)
-	db().radarScale = ns.ClampScale(v)
-	if ns.Radar then ns.Radar.ApplyScale() end
 end
 
 function ns.GetPopupScale() return ns.ClampScale(db().popupScale or DEFAULTS.popupScale) end
@@ -472,13 +456,13 @@ boot:SetScript("OnEvent", function(_, _, name)
 	d.mapID = d.mapID or DEFAULTS.mapID
 
 	for _, key in ipairs({ "ttsEnabled", "ttsOverlap", "popupEnabled", "popupSubtitle",
-		"bellEnabled", "targetBlink" }) do
+		"bellEnabled" }) do
 		if d[key] == nil then d[key] = DEFAULTS[key] end
 	end
 	d.ttsVoice = d.ttsVoice or DEFAULTS.ttsVoice
 	d.ttsVolume = d.ttsVolume or DEFAULTS.ttsVolume
 	d.announceStyle = d.announceStyle or DEFAULTS.announceStyle
-	for _, key in ipairs({ "hudScale", "radarScale", "popupScale" }) do
+	for _, key in ipairs({ "hudScale", "popupScale" }) do
 		d[key] = ns.ClampScale(d[key] or DEFAULTS[key])
 	end
 	d.markers = d.markers or {}

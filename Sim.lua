@@ -6,7 +6,7 @@ local _, ns = ...
 -- Two shapes, because there are two different things worth rehearsing:
 --
 --   /ss sim          makes up a run, shows it going onto the board, then calls
---                    it back with the real voice, bell, radar and popup. You
+--                    it back with the real voice, bell and popup. You
 --                    don't have to move -- this is for checking that the
 --                    announcements work and for placing the windows.
 --   /ss sim record   records the run from where you actually stand, the way a
@@ -18,7 +18,7 @@ local _, ns = ...
 --
 -- Two concessions to running outside the room: the room centre is temporarily
 -- re-pinned to wherever the player is standing (so "north of centre" means north
--- of them, and the radar and bell have something to measure against), and the
+-- of them, and the bell has something to measure against), and the
 -- boss unit token is faked. The original centre is put back when the run ends,
 -- however it ends.
 -- ===========================================================================
@@ -105,7 +105,7 @@ local function begin(waves)
 	cancelTimers()
 
 	-- The run happens out in the world, where the map restriction normally keeps
-	-- the board and the radar hidden. Lift it for the duration.
+	-- the board hidden. Lift it for the duration.
 	ns.SetVisibilityOverride(true)
 
 	ns.Detector.Reset()

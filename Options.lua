@@ -39,7 +39,7 @@ local modeButtons = {}    -- mode key -> radio button
 local styleButtons = {}   -- announce style key -> radio button
 local arrivalButtons = {} -- arrival cue key -> radio button
 local showCB, lockCB, autoResetCB, timerSlider, timerValue, restrictCB, blockInputCB
-local ttsCB, overlapCB, popupCB, subtitleCB, radarCB, blinkCB
+local ttsCB, overlapCB, popupCB, subtitleCB
 local volumeSlider, volumeValue
 local scaleSliders = {}   -- the three window-size sliders, refreshed together
 local capture             -- fullscreen key-capture overlay (created on demand)
@@ -373,22 +373,16 @@ local function buildAnnounceColumn()
 	subtitleCB = buildCheckbox("Include the next-up line", -304,
 		ns.GetPopupSubtitle, ns.SetPopupSubtitle, ANNOUNCE_X + 24)
 
-	radarCB = buildCheckbox("Show the rotating position radar", -330,
-		ns.GetRadarEnabled, ns.SetRadarEnabled, ANNOUNCE_X)
-	blinkCB = buildCheckbox("Blink the safe slice until you reach it", -356,
-		ns.GetTargetBlink, ns.SetTargetBlink, ANNOUNCE_X + 24)
-
 	local moveHint = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-	moveHint:SetPoint("TOPLEFT", panel, "TOPLEFT", ANNOUNCE_X + 24, -382)
-	moveHint:SetText("Unlock the HUD to drag the call and the radar.")
+	moveHint:SetPoint("TOPLEFT", panel, "TOPLEFT", ANNOUNCE_X + 24, -330)
+	moveHint:SetText("Unlock the HUD to drag the board and the call.")
 
 	local sizeHeading = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	sizeHeading:SetPoint("TOPLEFT", panel, "TOPLEFT", ANNOUNCE_X, -406)
+	sizeHeading:SetPoint("TOPLEFT", panel, "TOPLEFT", ANNOUNCE_X, -354)
 	sizeHeading:SetText("Window size")
 
-	buildScaleSlider("Board", ANNOUNCE_X + 28, -436, ns.GetHUDScale, ns.SetHUDScale)
-	buildScaleSlider("Position radar", ANNOUNCE_X + 28, -474, ns.GetRadarScale, ns.SetRadarScale)
-	buildScaleSlider("On-screen call", ANNOUNCE_X + 28, -512, ns.GetPopupScale, ns.SetPopupScale)
+	buildScaleSlider("Board", ANNOUNCE_X + 28, -384, ns.GetHUDScale, ns.SetHUDScale)
+	buildScaleSlider("On-screen call", ANNOUNCE_X + 28, -422, ns.GetPopupScale, ns.SetPopupScale)
 end
 
 -- ---------------------------------------------------------------------------
@@ -529,9 +523,6 @@ function Options.Refresh()
 	overlapCB:SetChecked(overlapCB.getter())
 	popupCB:SetChecked(popupCB.getter())
 	subtitleCB:SetChecked(subtitleCB.getter())
-	radarCB:SetChecked(radarCB.getter())
-	blinkCB:SetChecked(blinkCB.getter())
-	blinkCB:SetEnabled(ns.GetRadarEnabled())   -- nothing to blink without the radar
 
 	local volume = ns.GetTTSVolume()
 	volumeSlider:SetValue(volume)

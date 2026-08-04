@@ -72,7 +72,7 @@ recorded, whoever recorded it.
 
 ## During the repeat
 
-When the boss starts repeating the run, SnakeSays calls each wave four ways:
+When the boss starts repeating the run, SnakeSays calls each wave three ways:
 
 - **Voice**: one word per wave, the safe colour (*"Red"*) or the marker's name
   (*"Cross"*), your choice. Deliberately short: waves are about three seconds
@@ -81,47 +81,11 @@ When the boss starts repeating the run, SnakeSays calls each wave four ways:
   confirm the move without looking away.
 - **On-screen call**: the current quadrant large, with the next one beneath it
   so you can start moving early. Drag it anywhere; unlock the HUD to grab it.
-- **Radar**: the safe slice in green, the next in yellow, everything else red.
-  See below.
-
-### Position radar
-
-An optional second window showing the room top-down with you inside it. It turns
-with you, so "up" is always the way you're facing and a call of "go left" reads as
-left.
-
-Each quadrant's marker sits on the rim, with the dividing lines between them.
-Those lines are the real quadrant boundaries, so a marker means "anywhere in this
-quarter", not "on this line".
-
-During the repeat, every slice is painted for what it is right now:
-
-| Colour | Meaning |
-|--------|---------|
-| 🟩 **Green** | stand here |
-| 🟨 **Yellow** | where you're going next |
-| 🟥 **Red** | the wave lands here |
-
-The green slice **pulses slowly until you get there**, then holds steady, so you
-can tell at a glance whether you've made it without reading anything.
-
-Yellow only appears **after you've arrived**. While you're still travelling
-everything except the call is red, because none of it is safe yet. A second lit
-slice at that moment is just something else to misread under pressure. It's also
-absent on the last wave, and when the next call is for the slice you're already in
-(yellow over the green would read as "move" when the answer is "stay").
-
-Switch the pulse off with **Blink the safe slice until you reach it** if you'd
-rather green just sat there.
-
-By default the radar hangs off the left edge of the board and moves with it, so
-there's only one thing to place. Drag the radar itself (with the HUD unlocked)
-and it pins to the screen on its own instead; `/ss recenter` reattaches it.
 
 ## Practice run
 
 `/ss sim` makes up a run anywhere in the world, shows it going onto the board,
-then calls it back with the real voice, bell, radar and popup. It prints the run
+then calls it back with the real voice, bell and popup. It prints the run
 it's about to play, so you can check the calls against it. `/ss sim stop` ends it.
 
 It runs a 5-wave phase by default; `/ss sim 6` or `/ss sim 7` practises the
@@ -134,10 +98,9 @@ the wave phase. If you stand still and there's no quadrant to read, so nothing g
 recorded. It follows your mode, so in Semi-automatic you press the capture key
 and in Manual you press the board.
 
-The board and the radar are normally hidden outside the delve, so a practice run
-brings them up for its duration and puts them away afterwards. It only lifts the
-*location* restriction: if you've hidden the board or switched the radar off,
-they stay that way.
+The board is normally hidden outside the delve, so a practice run brings it up
+for its duration and puts it away afterwards. It only lifts the *location*
+restriction: if you've hidden the board, it stays hidden.
 
 ## When something doesn't behave
 
@@ -157,7 +120,7 @@ how many TTS voices are installed.
 - **Keybinds** - one per quadrant, plus *Quadrant detection* (semi-automatic
   capture) and *Reset*. Click a key box and press the combo (Esc cancels,
   right-click clears). These are real game bindings, set from this page.
-- **Show HUD** / **Lock HUD** - unlock to drag the board, the call and the radar.
+- **Show HUD** / **Lock HUD** - unlock to drag the board and the call.
 - **Ignore board clicks and quadrant keybinds** - on by default in Automatic.
 - **Auto-reset** - clears the sequence a set number of seconds after the *first*
   press (30–60s, default 40s). The timer is anchored to the first press and
@@ -166,13 +129,12 @@ how many TTS voices are installed.
   the windows out in the world.
 - **During the replay** - speak the safe quadrant on/off, call things by colour
   or by marker, voice volume, let calls overlap, bell on/off, on-screen call
-  on/off, next-up line on/off, radar on/off, blink the safe slice on/off.
-- **Window size** - one slider each for the board, the radar and the on-screen
-  call, 50% to 200%. They're separate on purpose: the board is a click target,
-  the radar is read out of the corner of your eye, and the call is read head-on,
-  so one size for all three is usually wrong for two of them. Resizing also
-  scales the window's offset from whatever it's anchored to, so it can shift a
-  little as it grows - nudge it back, or `/ss recenter`.
+  on/off, next-up line on/off.
+- **Window size** - one slider each for the board and the on-screen call, 50% to
+  200%. They're separate on purpose: the board is a click target and the call is
+  read head-on, so one size for both is usually wrong for one of them. Resizing
+  also scales the window's offset from whatever it's anchored to, so it can shift
+  a little as it grows - nudge it back, or `/ss recenter`.
 
 ## Slash commands
 
@@ -183,12 +145,11 @@ how many TTS voices are installed.
 | `/ss sim` | demo run anywhere; `/ss sim 7` for a 7-wave phase, `/ss sim stop` ends it |
 | `/ss sim record` | practice run recorded from where you stand |
 | `/ss status` | report what the addon currently sees |
-| `/ss radar` | toggle the position radar |
 | `/ss measure` | re-pin the room centre to where you stand |
 | `/ss show` · `/ss hide` · `/ss toggle` | show / hide the HUD |
 | `/ss lock` · `/ss unlock` | lock / unlock for dragging |
 | `/ss reset` | clear the recorded sequence |
-| `/ss recenter` | move the HUD, radar and on-screen call back to their default places |
+| `/ss recenter` | move the HUD and on-screen call back to their default places |
 
 (`/snakesays` is a long alias for `/ss`.)
 

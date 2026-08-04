@@ -257,12 +257,6 @@ describe("practice run visibility", function()
 		assert.is_false(ns.HUD.IsVisible())
 	end)
 
-	it("respects a radar the player has switched off", function()
-		local ns = outside(enc.setup("auto", { radarEnabled = false }))
-		wow.slash("SNAKESAYS", "sim")
-		assert.is_false(ns.Radar.IsShown())
-	end)
-
 	it("does not leave the override set if the run never starts", function()
 		local ns = outside(enc.setup("auto"))
 		wow.setPosition(nil)
