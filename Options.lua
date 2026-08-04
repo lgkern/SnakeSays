@@ -13,8 +13,8 @@ local _, ns = ...
 --   · Marker per quadrant — click one of the eight marker icons (unique across
 --     quadrants; Core.SetAssignment swaps on conflict).
 --   · A keybind per quadrant + reset — click the key box and press a combo
---     (Esc cancels, right-click clears). Real game bindings via SetBinding, so
---     they match the Keybindings panel.
+--     (Esc cancels, right-click clears). Real game bindings via
+--     SetBindingClick, bound to the named buttons Commands.lua creates.
 --   · Show / Lock checkboxes.
 --
 -- Built at PLAYER_LOGIN (Settings is nil headless, so this never runs there).
@@ -45,7 +45,7 @@ local scaleSliders = {}   -- the three window-size sliders, refreshed together
 local capture             -- fullscreen key-capture overlay (created on demand)
 local pendingButton       -- the key box whose binding we're setting
 
--- The five bindable actions (must match Bindings.xml binding names).
+-- The five bindable actions (must match the button names Commands.lua creates).
 local BIND_COMMAND = {
 	N = "SNAKESAYS_NORTH", E = "SNAKESAYS_EAST",
 	S = "SNAKESAYS_SOUTH", W = "SNAKESAYS_WEST",
@@ -103,12 +103,19 @@ end
 -- ---------------------------------------------------------------------------
 
 local function commandLabel(command)
-	return _G["BINDING_NAME_" .. command] or command
+	return ns.BINDING_LABEL[command] or command
+end
+
+-- SetBindingClick(key, name, "LeftButton") is stored as the action string
+-- "CLICK name:LeftButton" — GetBindingKey/GetBindingText need that same
+-- string to look the binding back up.
+local function clickAction(command)
+	return "CLICK " .. command .. ":LeftButton"
 end
 
 local function refreshKeybinds()
 	for command, btn in pairs(keybindButtons) do
-		local key = GetBindingKey(command)
+		local key = GetBindingKey(clickAction(command))
 		btn:SetText(key and GetBindingText(key) or "Unbound")
 	end
 end
@@ -116,10 +123,10 @@ end
 -- Replace this command's binding with `chord` (or clear it when chord is nil),
 -- then persist. We keep one key per action: clear any existing keys first.
 local function applyBinding(command, chord)
-	local k1, k2 = GetBindingKey(command)
+	local k1, k2 = GetBindingKey(clickAction(command))
 	if k1 then SetBinding(k1) end
 	if k2 then SetBinding(k2) end
-	if chord then SetBinding(chord, command) end
+	if chord then SetBindingClick(chord, command, "LeftButton") end
 	SaveBindings(GetCurrentBindingSet())
 end
 
