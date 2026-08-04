@@ -1,12 +1,23 @@
 local _, ns = ...
 
 -- ===========================================================================
--- Commands.lua  ·  keybind click targets, binding labels, and the /snakesays hub.
+-- Commands.lua  ·  keybind globals, binding labels, and the /snakesays hub.
 --
--- These drive the same Seq API the mouse does (and pulse the wedge for
--- feedback). None of this is protected, so it all works mid-fight.
+-- The keybind globals are called from Bindings.xml; they drive the same Seq API
+-- the mouse does (and pulse the wedge for feedback). None of this is protected,
+-- so it all works mid-fight.
 -- ===========================================================================
 
+-- Keybinding labels (consumed by the Keybindings UI; see Bindings.xml).
+BINDING_HEADER_SNAKESAYS = "SnakeSays"
+BINDING_NAME_SNAKESAYS_NORTH = "Press North quadrant"
+BINDING_NAME_SNAKESAYS_EAST  = "Press East quadrant"
+BINDING_NAME_SNAKESAYS_SOUTH = "Press South quadrant"
+BINDING_NAME_SNAKESAYS_WEST  = "Press West quadrant"
+BINDING_NAME_SNAKESAYS_RESET = "Reset sequence"
+BINDING_NAME_SNAKESAYS_CAPTURE = "Quadrant detection (semi-automatic)"
+
+-- Called by Bindings.xml.
 function SnakeSays_Press(dir)
 	if ns.Seq.Press(dir) and ns.HUD then
 		ns.HUD.Flash(dir)
@@ -22,39 +33,6 @@ end
 function SnakeSays_Reset()
 	ns.Seq.Reset()
 end
-
--- ---------------------------------------------------------------------------
--- Keybind click targets
---
--- A Bindings.xml used to register these as named actions, but the client
--- misreports every <Binding> in that file as "Unrecognized XML" on load
--- (confirmed harmless, but noisy enough to trip the UI's error-spam warning).
--- Binding a key straight to a named button's click (see Options.lua, which
--- calls SetBindingClick) sidesteps that file entirely. Labels for the
--- addon's own keybind UI live in ns.BINDING_LABEL below.
--- ---------------------------------------------------------------------------
-
-ns.BINDING_LABEL = {
-	SNAKESAYS_NORTH   = "Press North quadrant",
-	SNAKESAYS_EAST    = "Press East quadrant",
-	SNAKESAYS_SOUTH   = "Press South quadrant",
-	SNAKESAYS_WEST    = "Press West quadrant",
-	SNAKESAYS_RESET   = "Reset sequence",
-	SNAKESAYS_CAPTURE = "Quadrant detection (semi-automatic)",
-}
-
-local function bindButton(name, onClick)
-	local b = CreateFrame("Button", name, UIParent)
-	b:SetScript("OnClick", onClick)
-	return b
-end
-
-bindButton("SNAKESAYS_NORTH",   function() SnakeSays_Press("N") end)
-bindButton("SNAKESAYS_EAST",    function() SnakeSays_Press("E") end)
-bindButton("SNAKESAYS_SOUTH",   function() SnakeSays_Press("S") end)
-bindButton("SNAKESAYS_WEST",    function() SnakeSays_Press("W") end)
-bindButton("SNAKESAYS_CAPTURE", function() SnakeSays_Capture() end)
-bindButton("SNAKESAYS_RESET",   function() SnakeSays_Reset() end)
 
 -- AddOn Compartment button (the icon on the minimap compartment, see the .toc).
 -- Left-click opens options; right-click toggles the HUD.

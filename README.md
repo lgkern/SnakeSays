@@ -156,7 +156,8 @@ how many TTS voices are installed.
   two, so you never end up with a duplicate.
 - **Keybinds** - one per quadrant, plus *Quadrant detection* (semi-automatic
   capture) and *Reset*. Click a key box and press the combo (Esc cancels,
-  right-click clears). These are real game bindings, set from this page.
+  right-click clears). These are real game bindings, so they also show up under
+  `Esc → Options → Keybindings → SnakeSays`.
 - **Show HUD** / **Lock HUD** - unlock to drag the board, the call and the radar.
 - **Ignore board clicks and quadrant keybinds** - on by default in Automatic.
 - **Auto-reset** - clears the sequence a set number of seconds after the *first*

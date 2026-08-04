@@ -25,3 +25,5 @@ HUD.lua
 Radar.lua
 Options.lua
 Commands.lua
+
+Bindings.xml
