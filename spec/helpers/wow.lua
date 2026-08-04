@@ -611,6 +611,10 @@ function M.reset()
 		end
 		return true
 	end
+	_G.SetBindingClick = function(key, name, button)
+		M.bindings["CLICK " .. name .. ":" .. (button or "")] = key
+		return true
+	end
 	_G.SaveBindings = function() end
 	_G.GetCurrentBindingSet = function() return 1 end
 

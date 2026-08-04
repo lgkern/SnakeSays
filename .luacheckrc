@@ -17,7 +17,7 @@ read_globals = {
 	"PlaySound", "PlaySoundFile",
 	"StaticPopup_Show", "StaticPopup_Hide",
 	"CreateVector2D",
-	"GetBindingKey", "GetBindingText", "SetBinding", "SaveBindings", "GetCurrentBindingSet",
+	"GetBindingKey", "GetBindingText", "SetBinding", "SetBindingClick", "SaveBindings", "GetCurrentBindingSet",
 	"IsAltKeyDown", "IsControlKeyDown", "IsShiftKeyDown", "IsMouseButtonDown",
 	"InCombatLockdown",
 	"wipe", "strtrim",
@@ -31,8 +31,7 @@ ignore = {
 	"212",              -- unused argument (the addonName/`_` varargs)
 	"213",              -- unused loop variable
 	"11./SLASH_.*",     -- SLASH_SNAKESAYS1/2 are intentional WoW slash globals
-	"11./BINDING_.*",   -- BINDING_HEADER_/BINDING_NAME_ are read by the keybinding UI
-	"11./SnakeSays_.*", -- global funcs called from Bindings.xml (SnakeSays_Press/Reset)
+	"11./SnakeSays_.*", -- global funcs used as keybind click targets (SnakeSays_Press/Reset)
 }
 
 -- The test suite runs under busted, and the client mock deliberately installs
@@ -50,7 +49,7 @@ files["spec/"] = {
 	"UnitName", "UnitHealth", "UnitHealthMax", "UnitChannelInfo",
 		"PlaySound", "PlaySoundFile", "StaticPopup_Show", "StaticPopup_Hide",
 		"CreateVector2D", "SlashCmdList", "StaticPopupDialogs",
-		"GetBindingKey", "GetBindingText", "SetBinding", "SaveBindings",
+		"GetBindingKey", "GetBindingText", "SetBinding", "SetBindingClick", "SaveBindings",
 		"GetCurrentBindingSet", "InCombatLockdown",
 		"wipe", "strtrim", "unpack",
 	},
