@@ -422,6 +422,19 @@ describe("the practice run previews the timeline", function()
 		assert.is_false(ns.HUD.IsVisible())
 		assert.is_false(ns.Timeline.IsVisible())
 	end)
+
+	-- The one place the leftover run must not survive. A staged run adopted by a
+	-- real pull would be called back as though the boss had shown it.
+	it("is wiped by the start of a real pull", function()
+		local ns = enc.setup({ locked = true })
+		wow.slash("SNAKESAYS", "sim")
+		wow.advance(60)
+		assert.equals(5, ns.Timeline.SlotCount())
+
+		enc.pull(ns, enc.HARD)
+		assert.equals(0, ns.Timeline.SlotCount())
+		assert.is_false(ns.Timeline.IsVisible())
+	end)
 end)
 
 describe("the timeline follows the location gates", function()
