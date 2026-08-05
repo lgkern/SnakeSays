@@ -125,7 +125,3 @@ let calls overlap, on-screen call on/off, next-up line on/off, timeline on/off.
 | `/ss recenter` | move every window back to its default place |
 
 (`/snakesays` is a long alias for `/ss`.)
-
-## Former Automatic Detection Module
-
-The former automatic detection module was inspired by [Rothirr's Azta'rec Helper](https://www.curseforge.com/wow/addons/aztarec-helper). This detection is no longer present as Blizzard has removed the ability for addons to read the player's position in combat during the encounter.
