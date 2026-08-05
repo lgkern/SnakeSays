@@ -31,5 +31,5 @@ jobs:
         env:
           GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}   # provided automatically → GitHub release
           CF_API_KEY: ${{ secrets.CF_API_KEY }}       # add this secret when the CF page exists
-          # WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
+          WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
           # WOWI_API_TOKEN: ${{ secrets.WOWI_API_TOKEN }}
