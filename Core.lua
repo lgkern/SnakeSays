@@ -43,52 +43,22 @@ end
 -- ---------------------------------------------------------------------------
 -- The boss room.
 --
--- Reference geometry, in world yards on the axes UnitPosition uses: `a` runs
--- north, `b` runs west. The room is 111 yd north-south by 77 yd east-west, and
--- is modelled as a circle on the narrower axis -- players can and do stand well
--- north or south of that circle, so anything drawing the room has to cope with
--- being outside it rather than assume nobody is.
---
--- `center` is the author's own standing measurement. It is reference only: the
--- centre the addon *reasons* from is whatever this client recorded with
--- `/ss measure`, and until that has been run ns.GetRoomCenter() returns nil and
--- everything that needs a room frame declines to guess.
+-- Ids only. The addon used to hold a measured room centre and work out which
+-- quarter the player stood in; the client no longer hands out UnitPosition in
+-- here during combat, so there is nothing to measure against and no geometry
+-- left to keep. These two are the client's own ids for the place, used to decide
+-- whether the board should be on screen.
 -- ---------------------------------------------------------------------------
 
 ns.ROOM = {
 	instanceMapID = 3079,
 	uiMapID       = 2634,
-
-	center = { a = 181.80, b = 0.60 },
-	radius = 38.5,   -- yards, half the room's narrow (east-west) span
 }
 
 -- The delve this all happens in. Matched on the name as well as the instance id
 -- because ids get renumbered between builds, and an unrecognised delve is one
 -- where the addon silently does nothing at all.
 local DELVE_ZONE = "Venomfall Deeps"
-
--- ---------------------------------------------------------------------------
--- Operating modes.
---
---   auto   — the addon records and replays with no input from the player.
---   semi   — the player says *when* to capture; the addon decides *which*
---            quadrant from their position.
---   manual — the player presses the quadrant themselves (the original way).
--- ---------------------------------------------------------------------------
-
-ns.MODES = {
-	{ key = "auto",   name = "Automatic",      desc = "Records and calls the sequence with no input from you." },
-	{ key = "semi",   name = "Semi-automatic", desc = "You press a key at each wave; the quadrant is read from where you stand." },
-	{ key = "manual", name = "Manual",         desc = "You press the quadrant yourself, on the board or by keybind." },
-}
-
-ns.MODE_NAME = {}
-local VALID_MODE = {}
-for _, mode in ipairs(ns.MODES) do
-	ns.MODE_NAME[mode.key] = mode.name
-	VALID_MODE[mode.key] = true
-end
 
 -- Default assignment matches the boss-fight defaults the player asked for:
 -- North=Circle(orange), East=Diamond(purple), South=Square(blue), West=Cross(red).
@@ -101,8 +71,6 @@ local DEFAULTS = {
 	autoResetTime = 40,   -- seconds after the first press
 	restrictToMap = true, -- only show the HUD inside the target map
 	mapID = 2634,         -- Azta'rec / Delve Nemesis (uiMapID); editable in-game
-	mode = nil,           -- nil => never chosen; the delve prompt asks once
-	blockManualInput = nil, -- nil => follow the mode (blocked only in automatic)
 
 	-- Replay announcements
 	ttsEnabled = true,
@@ -113,7 +81,6 @@ local DEFAULTS = {
 	popupEnabled = true,
 	popupSubtitle = true,     -- the "... next" line under the main call
 	popupPosition = nil,      -- nil => centre top
-	bellEnabled = true,
 
 	-- Window sizes, as frame-scale multipliers (1 = as shipped).
 	hudScale = 1,
@@ -247,45 +214,6 @@ function ns.InDelve()
 end
 
 -- ---------------------------------------------------------------------------
--- Operating mode.
---
--- Unset until the player answers the prompt (or picks one in the options), so
--- nothing auto-records behind their back on a fresh install.
--- ---------------------------------------------------------------------------
-
-local modeListeners = {}
-
-function ns.OnModeChange(fn)
-	modeListeners[#modeListeners + 1] = fn
-end
-
-function ns.GetMode() return db().mode end
-function ns.IsModeChosen() return VALID_MODE[db().mode] == true end
-
--- Returns true if the mode was applied, false if `key` isn't one of ours.
-function ns.SetMode(key)
-	if not VALID_MODE[key] then return false end
-	if db().mode == key then return true end
-	db().mode = key
-	for _, fn in ipairs(modeListeners) do fn(key) end
-	if ns.HUD then ns.HUD.ApplyShown() end
-	return true
-end
-
--- Manual input (wedge clicks and quadrant keybinds) is blocked by default in
--- automatic mode, where a stray press would corrupt a recording the addon is
--- managing itself. An explicit choice is remembered and outranks the mode.
-function ns.GetBlockManualInput()
-	local v = db().blockManualInput
-	if v == nil then return ns.GetMode() == "auto" end
-	return v
-end
-
-function ns.SetBlockManualInput(v)
-	db().blockManualInput = not not v
-end
-
--- ---------------------------------------------------------------------------
 -- Replay announcements
 -- ---------------------------------------------------------------------------
 
@@ -327,44 +255,6 @@ function ns.SetPopupEnabled(v) db().popupEnabled = not not v end
 
 function ns.GetPopupSubtitle() return flag("popupSubtitle") end
 function ns.SetPopupSubtitle(v) db().popupSubtitle = not not v end
-
--- ---------------------------------------------------------------------------
--- Reaching the safe quarter
---
--- Confirmation that the player made it, without them having to look away from
--- the fight. Three answers rather than an on/off, because "tell me out loud"
--- and "make a noise" are different wants and neither is a louder version of the
--- other.
--- ---------------------------------------------------------------------------
-
-ns.ARRIVAL_CUES = {
-	{ key = "none", name = "None" },
-	{ key = "bell", name = "Ring a Bell" },
-	{ key = "say",  name = "Say Safe" },
-}
-
-local VALID_CUE = {}
-for _, cue in ipairs(ns.ARRIVAL_CUES) do VALID_CUE[cue.key] = true end
-
-function ns.GetArrivalCue()
-	local stored = db().arrivalCue
-	if VALID_CUE[stored] then return stored end
-	-- Carried over from when this was a single bell toggle, so an existing
-	-- install keeps the answer it already gave.
-	if db().bellEnabled == false then return "none" end
-	return "bell"
-end
-
-function ns.SetArrivalCue(key)
-	if not VALID_CUE[key] then return false end
-	db().arrivalCue = key
-	return true
-end
-
--- The old toggle, kept as a view onto the new setting so nothing that only
--- cares whether the bell rings has to know about the rest.
-function ns.GetBellEnabled() return ns.GetArrivalCue() == "bell" end
-function ns.SetBellEnabled(v) ns.SetArrivalCue(v and "bell" or "none") end
 
 -- Step-by-step chat output from the detector. Off, and not in DEFAULTS, so it
 -- can only ever be on because someone asked for it.
@@ -455,8 +345,7 @@ boot:SetScript("OnEvent", function(_, _, name)
 	if d.restrictToMap == nil then d.restrictToMap = DEFAULTS.restrictToMap end
 	d.mapID = d.mapID or DEFAULTS.mapID
 
-	for _, key in ipairs({ "ttsEnabled", "ttsOverlap", "popupEnabled", "popupSubtitle",
-		"bellEnabled" }) do
+	for _, key in ipairs({ "ttsEnabled", "ttsOverlap", "popupEnabled", "popupSubtitle" }) do
 		if d[key] == nil then d[key] = DEFAULTS[key] end
 	end
 	d.ttsVoice = d.ttsVoice or DEFAULTS.ttsVoice

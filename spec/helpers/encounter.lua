@@ -3,9 +3,9 @@
 --
 -- Nothing here reaches into the addon to set up an outcome. It fires the events
 -- a real fight fires -- ENCOUNTER_START, the boss' aura going on and coming off,
--- one cast per wave -- moves the player around between them, and leaves the
--- addon to work out for itself what happened. A test that stages the answer
--- proves the function works; this proves the fight reaches it.
+-- one cast per wave -- presses the board the way the player does between them,
+-- and leaves the addon to work out for itself what happened. A test that stages
+-- the answer proves the function works; this proves the fight reaches it.
 -- ===========================================================================
 
 local addon = require("spec.helpers.addon")
@@ -27,29 +27,15 @@ M.SLOT = { [M.NORMAL] = 3.503, [M.HARD] = 3.003 }
 -- sits on one of two and switches part way through a round.
 M.CAST = { normal = 3.005, hardSlow = 3.64, hardFast = 3.31 }
 
--- The room, as the addon's author measured it.
-M.CENTER = { a = 181.80, b = 0.60 }
-
--- How far out the player stands. Every sample in a logged hard round sat
--- between 5 and 11 yards from the centre, so this is the middle of that.
-local STAND = 8
-
-local OFFSET = {
-	N = {  STAND, 0 },
-	S = { -STAND, 0 },
-	W = { 0,  STAND },
-	E = { 0, -STAND },
-}
-
 local BOSS_GUID = "Creature-0-0-3079-0-224001-0000AZTA"
 local ADD_GUID  = "Creature-0-0-3079-0-224002-0000ADD1"
 
 -- ---------------------------------------------------------------------------
--- Standing somewhere
+-- Being there
 -- ---------------------------------------------------------------------------
 
--- Walk into the delve, zone event and all -- which is what the windows and the
--- mode prompt actually watch for.
+-- Walk into the delve, zone event and all -- which is what the windows watch
+-- for.
 function M.inDelve(ns)
 	wow.instanceMapID = ns.ROOM.instanceMapID
 	wow.zoneText = "Venomfall Deeps"
@@ -57,30 +43,12 @@ function M.inDelve(ns)
 	wow.fire("ZONE_CHANGED_NEW_AREA")
 end
 
--- Move the player into `quadrant`, or to the middle of the room when nil.
--- Offsets are taken from whatever centre the addon is currently working with, so
--- an unmeasured room puts the player where the real one is.
-function M.standAt(ns, quadrant)
-	local center = ns.GetRoomCenter() or M.CENTER
-	local offset = quadrant and OFFSET[quadrant] or { 0, 0 }
-	wow.setPosition(center.a + offset[1], center.b + offset[2], 0, ns.ROOM.instanceMapID)
-end
-
--- Stand in the middle of the room and run `/ss measure`, which is the only way
--- the addon ever gets a room centre.
-function M.measure(ns)
-	M.standAt(ns, nil)
-	wow.slash("SNAKESAYS", "measure")
-	return ns
-end
-
--- Boot the addon in `mode`, standing in the middle of the delve.
-function M.setup(mode, extraDB)
-	local db = { mode = mode or "auto" }
+-- Boot the addon, standing in the delve with the boss units to hand.
+function M.setup(extraDB)
+	local db = {}
 	for k, v in pairs(extraDB or {}) do db[k] = v end
 	local ns = addon.boot({ db = db })
 	M.inDelve(ns)
-	wow.setPosition(M.CENTER.a, M.CENTER.b, 0, ns.ROOM.instanceMapID)
 	wow.hostile.boss1 = true
 	wow.hostile.nameplate1 = true
 	wow.guids.boss1 = BOSS_GUID
@@ -89,13 +57,9 @@ function M.setup(mode, extraDB)
 	return ns
 end
 
--- Boot, measure the room, and walk in. The usual starting point for a test that
--- cares about what the addon reads rather than about it having nothing to read.
-function M.ready(mode, extraDB)
-	local ns = M.setup(mode, extraDB)
-	M.measure(ns)
-	return ns
-end
+-- Nothing to measure any more, so this is `setup` -- kept because most of the
+-- suite reads better saying it is ready than saying it is set up.
+M.ready = M.setup
 
 -- ---------------------------------------------------------------------------
 -- A pull
@@ -120,20 +84,15 @@ end
 -- The showing half
 -- ---------------------------------------------------------------------------
 
--- Walk the player through one round. `path` is the quarter they settle in for
--- each wave, one entry per wave.
---
--- They arrive part way through each slot rather than teleporting at its start,
--- which is what a player actually does and what the end-weighting exists for:
--- at the default they spend the first half of the slot still in the quarter they
--- came from. `opts.arriveAt` moves that crossing point (0 = there from the off,
--- 0.9 = only just made it).
+-- Run one round. `path` is the quarter the player presses for each wave, one
+-- entry per wave, pressed half way through its slot the way somebody watching
+-- the wave actually would.
 --
 -- opts:
 --   difficulty  M.NORMAL or M.HARD, which picks the slot length (default hard)
 --   slot        seconds per slot, overriding the difficulty's
 --   length      override the aura duration, for rounds that are not whole
---   arriveAt    fraction of the slot spent still in the previous quarter
+--   silent      run the round without the player pressing anything
 --   unit        which boss carries the aura (default boss1)
 -- `opts.via` picks how the boss carries the round:
 --   "channel"  what retail actually does, and the default
@@ -158,16 +117,15 @@ function M.showRound(ns, path, opts)
 	opts = opts or {}
 	local unit = opts.unit or "boss1"
 	local slot = opts.slot or M.SLOT[opts.difficulty or M.HARD]
-	local arriveAt = opts.arriveAt or 0.5
 	local length = opts.length or slot * #path
-	local step = length / #path      -- the walk always covers the whole round
+	local step = length / #path      -- the presses always cover the whole round
 
 	M.beginSermon(unit, length, opts)
 
 	for _, quadrant in ipairs(path) do
-		wow.advance(step * arriveAt)
-		M.standAt(ns, quadrant)
-		wow.advance(step * (1 - arriveAt))
+		wow.advance(step * 0.5)
+		if not opts.silent then ns.Seq.Press(quadrant) end
+		wow.advance(step * 0.5)
 	end
 
 	M.endSermon(unit, opts)
@@ -186,7 +144,7 @@ function M.showRoundCutShort(ns, path, after, opts)
 	for _, quadrant in ipairs(path) do
 		if spent + slot > after then break end
 		wow.advance(slot * 0.5)
-		M.standAt(ns, quadrant)
+		if not opts.silent then ns.Seq.Press(quadrant) end
 		wow.advance(slot * 0.5)
 		spent = spent + slot
 	end
@@ -223,7 +181,6 @@ function M.callRound(ns, count, opts)
 		end
 
 		wow.advance(castTime)
-		if opts.moveTo then M.standAt(ns, ns.Seq.Get()[wave]) end
 		wow.advance(opts.gap or 0.4)
 	end
 	return ns

@@ -3,16 +3,18 @@ local _, ns = ...
 -- ===========================================================================
 -- Announce.lua  ·  what the player hears and reads during the silent replay.
 --
--- Three channels, each independently switchable:
+-- Two channels, each independently switchable:
 --
 --   voice   one word per wave -- the safe colour ("Red"), or the marker's name
 --           ("Cross") for players who read the board by shape. Short on purpose:
 --           waves are about three seconds apart, so anything longer arrives
 --           after the thing it was warning about.
---   bell    rings the moment the player actually reaches the safe quadrant, so
---           they can confirm the move without looking away from the fight.
 --   popup   the call on screen: the current quadrant large, and the one after it
 --           as a smaller line so the next move can be started early.
+--
+-- There used to be a third: a bell that rang the moment the player reached the
+-- safe quarter. It needed to know where they were standing, which the client no
+-- longer says in here, so it is gone rather than left to fail silently.
 --
 -- The voice goes through C_VoiceChat.SpeakText with the argument order and
 -- voice-validation the community's raid addons settled on: an unknown stored
@@ -22,29 +24,9 @@ local _, ns = ...
 local Announce = {}
 ns.Announce = Announce
 
--- PlaySoundFile with a path into the game's own sound archive stopped working
--- for addons -- the client wants a FileDataID now, and answers a path with a
--- flat refusal, which is how the bell managed to be silent for a whole feature's
--- worth of testing. An addon may still play files it ships itself; SnakeSays
--- ships none, so the bell falls through these alert kits until one of them
--- actually plays. The last is the id behind the first, for a client whose
--- SOUNDKIT table is missing the name.
---
--- Master, not SFX: an addon alert has to sound for the players who turn the
--- game's own effects down, and SFX was refused outright when it was tried.
-local BELL_KITS = { "ALARM_CLOCK_WARNING_3", "READY_CHECK", "RAID_WARNING", "IG_QUEST_LIST_COMPLETE" }
-local BELL_KIT_FALLBACK = 12867
-
--- What the voice says on arrival, when that is the cue the player picked. One
--- word, because it lands while the next call is already coming.
-local SAFE_WORD = "Safe"
-local BELL_POLL  = 0.1     -- how often we check whether the player made it
-local ICON_SIZE  = 22
+local ICON_SIZE = 22
 
 local popup                -- the on-screen call
-local bellTicker
-local safeQuadrant         -- where the player should be standing right now
-local bellRung             -- already rung for this wave
 
 -- ---------------------------------------------------------------------------
 -- Voice
@@ -79,20 +61,6 @@ local function defaultVoice()
 	return nil
 end
 
--- A voice that is not the one calling the quadrants, so "Safe" cannot be taken
--- for another call -- it arrives while the next one is already coming, and the
--- two mean opposite things. nil on a client with only one voice, which falls
--- back to the usual one.
-local function alternateVoice()
-	local calling = ns.GetTTSVoice()
-	for _, voice in ipairs(installedVoices()) do
-		if type(voice.voiceID) == "number" and voice.voiceID ~= calling then
-			return voice.voiceID
-		end
-	end
-	return nil
-end
-
 -- `voiceID` overrides the one the player picked, for anything that has to be
 -- told apart from a wave call by ear alone.
 function Announce.Say(text, voiceID)
@@ -121,68 +89,11 @@ function Announce.Say(text, voiceID)
 end
 
 -- ---------------------------------------------------------------------------
--- Bell
--- ---------------------------------------------------------------------------
-
--- Play `kit` on the master channel, which is the one that still sounds for a
--- player who has turned the game's own effects down -- which is most people who
--- run an addon like this.
-local function playKit(kit)
-	local id = SOUNDKIT and SOUNDKIT[kit]
-	if type(id) ~= "number" then return false end
-	local ok, played = pcall(PlaySound, id, "Master")
-	return ok and played and true or false
-end
-
--- Ring, returning the name of whatever actually played so the self-test can say
--- which one carried. nil means nothing would sound at all.
-local function ring()
-	for _, kit in ipairs(BELL_KITS) do
-		if playKit(kit) then return kit end
-	end
-	local ok, played = pcall(PlaySound, BELL_KIT_FALLBACK, "Master")
-	if ok and played then return "id " .. BELL_KIT_FALLBACK end
-	return nil
-end
-
--- Confirm that the player reached the safe quarter, however they asked to be
--- told. Fired once per wave, on arrival.
-local function confirmArrival()
-	local cue = ns.GetArrivalCue()
-	if cue == "bell" then return ring() ~= nil end
-	if cue == "say" then return Announce.Say(SAFE_WORD, alternateVoice()) end
-	return false
-end
-
-local function stopBellWatch()
-	if bellTicker then
-		bellTicker:Cancel()
-		bellTicker = nil
-	end
-	safeQuadrant = nil
-	bellRung = false
-end
-
--- Watch for the player arriving in the wave's safe quadrant. Edge-triggered per
--- wave: shuffling in and out afterwards doesn't ring again, but the next wave
--- re-arms it.
-local function startBellWatch()
-	if bellTicker then return end
-	bellTicker = C_Timer.NewTicker(BELL_POLL, function()
-		if not safeQuadrant or bellRung then return end
-		if ns.Position.Quadrant() == safeQuadrant then
-			bellRung = true
-			confirmArrival()
-		end
-	end)
-end
-
--- ---------------------------------------------------------------------------
 -- Sound self-test
 --
--- Both sounds fail the same way -- nothing happens -- and for entirely
--- different reasons, so "no sound" on its own says nothing about which. This
--- fires each one on its own and reports what the client made of it.
+-- The voice fails the same way it succeeds from the outside -- nothing happens
+-- -- so "no sound" on its own says nothing about why. This fires it and reports
+-- what the client made of it.
 -- ---------------------------------------------------------------------------
 
 function Announce.SelfTest()
@@ -206,16 +117,6 @@ function Announce.SelfTest()
 	else
 		ns.Print("    saying \"" .. ns.QuadrantLabel(ns.QUADRANTS[1]) .. "\" now.")
 		Announce.Say(ns.QuadrantLabel(ns.QUADRANTS[1]))
-	end
-
-	local cue = ns.GetArrivalCue()
-	ns.Print("on reaching the safe slice: |cffffd200" .. cue .. "|r")
-	if cue ~= "none" then
-		-- Fired a moment later so it does not land on top of the voice above.
-		C_Timer.After(1.5, function()
-			local ok = confirmArrival()
-			ns.Print("    " .. (ok and "played" or "|cffff5555nothing would play at all|r"))
-		end)
 	end
 end
 
@@ -339,15 +240,11 @@ function Announce.PopupSubtitle() return popup and popup.subtitle:GetText() or "
 -- ---------------------------------------------------------------------------
 
 function Announce.OnStep(index, current, nextUp)
-	safeQuadrant = current
-	bellRung = false
-	startBellWatch()
 	Announce.Say(ns.QuadrantLabel(current))
 	showCall(current, nextUp)
 end
 
 function Announce.OnEnd()
-	stopBellWatch()
 	hideCall()
 end
 

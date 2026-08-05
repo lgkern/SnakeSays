@@ -1,6 +1,6 @@
 ## Interface: 120007, 120100
 ## Title: SnakeSays
-## Notes: Simon-Says HUD for recording and replaying boss safe-quadrant sequences.
+## Notes: Simon-Says HUD for Azta'rec: you tap the safe quadrants, it calls them back on the boss' own timing.
 ## Author: Lucas
 ## Version: @project-version@
 ## SavedVariables: SnakeSaysDB
@@ -9,13 +9,11 @@
 ## AddonCompartmentFunc: SnakeSays_OnCompartment
 ## X-Curse-Project-ID: 1593065
 
-# Load order: shared state -> the recording pipeline (position, modes, the
-# encounter machine, then everything that reacts to it) -> UI -> commands.
+# Load order: shared state -> the board -> the encounter machine, then
+# everything that reacts to it -> UI -> commands.
 # Announce registers listeners on Detector at load, so it must come after it.
 Core.lua
 Sequence.lua
-Position.lua
-Modes.lua
 Detector.lua
 Announce.lua
 Sim.lua

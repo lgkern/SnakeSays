@@ -4,14 +4,20 @@ local _, ns = ...
 -- Detector.lua  ·  the encounter state machine.
 --
 -- The fight runs a memory game three times per pull. Each round has a showing
--- half, where waves cross the room and the player's quarter is the answer, and
--- a calling half, where the boss repeats the same run with no visual warning.
+-- half, where waves cross the room and the safe quarter is whichever one the
+-- player is standing in, and a calling half, where the boss repeats the same
+-- run with no visual warning.
 --
--- The showing half is invisible: no cast, no damage, no unit event per wave.
--- What it does have is the boss channelling Sermon of Ula'tek for exactly one
--- slot per wave, so the round announces its own length the moment it starts.
--- That is the whole trick -- the round is cut into equal slots, and the player's
--- quarter is read at the end of each one.
+-- What the player is standing in is theirs to tell us. The client stopped
+-- handing out UnitPosition inside this arena in combat, so the board is filled
+-- by hand -- wedge clicks or keybinds, during the showing half. This file does
+-- not read the room and does not know where anybody is.
+--
+-- What it does instead is *time* the fight, which is the half a player cannot do
+-- in their head. The showing half is invisible: no cast, no damage, no unit
+-- event per wave. What it does have is the boss channelling Sermon of Ula'tek
+-- for exactly one slot per wave, so the round announces its own length the
+-- moment it starts -- which is how many waves are coming, before they come.
 --
 -- The calling half is the opposite: one cast per wave, and the wave lands when
 -- the cast completes. So the showing half is driven by a clock and the calling
@@ -19,9 +25,9 @@ local _, ns = ...
 -- each other on purpose.
 --
 --   ENCOUNTER_START ─ arm
---     CHANNEL_START (Sermon)       ─ round starts, length known, slots begin
---       ... sampled ...            ─ one board entry per slot as it closes
---     CHANNEL_STOP  (Sermon)       ─ round ends; whole? keep it. short? bin it
+--     CHANNEL_START (Sermon)       ─ round starts, length known, wave count known
+--       ... the player fills the board ...
+--     CHANNEL_STOP  (Sermon)       ─ round ends; whole? keep it. short? say so
 --     UNIT_SPELLCAST_START (Echo)  ─ one call per cast, announced at cast start
 --   ENCOUNTER_END   ─ disarm, forget the pull
 --
@@ -36,8 +42,6 @@ local _, ns = ...
 -- The replay at the bottom is the seam the rest of the addon hangs off: Announce
 -- subscribes to it at load, and the practice run drives it directly. Nothing
 -- downstream knows or cares whether a step came from the boss or from `/ss sim`.
---
--- Detection inspired by Rothirr's Azta'rec Helper: https://www.curseforge.com/wow/addons/aztarec-helper
 --
 -- ===========================================================================
 
@@ -118,11 +122,6 @@ local WAVES_BY_ROUND = {
 -- How far a round's length may sit from a whole number of slots and still count
 -- as a whole round. A wipe cuts the aura mid-slot; this is what catches it.
 local SLOT_TOLERANCE = 0.20   -- in slots
-
--- How often the player's quarter is read while a round is being shown. Around
--- thirty readings per slot: enough to weight meaningfully, cheap enough to run
--- through a whole pull.
-local SAMPLE_INTERVAL = 0.1
 
 local MAX_WAVES = 12   -- the longest real round is seven; this is a sanity rail
 
@@ -222,7 +221,6 @@ local unreadableCalls = 0   -- calls taken on where-and-when alone, this round
 local roundIndex = 0        -- which memory game of this pull is running
 
 local castEndsAt            -- GetTime() at which the current call's wave lands
-local sampler               -- position-sampling ticker
 local roundPoll             -- looks for the round's aura while the encounter is up
 local endTimer              -- closes the replay when the last wave lands
 
@@ -466,113 +464,6 @@ local function settleWaveCount(callingHalfEnded)
 end
 
 -- ---------------------------------------------------------------------------
--- Reading the round
--- ---------------------------------------------------------------------------
-
-local function stopSampler()
-	if sampler then
-		sampler:Cancel()
-		sampler = nil
-	end
-end
-
--- Which quarter slot `index` belongs to, out of the readings taken during it.
---
--- Weighted towards the end of the slot, because that is where the wave lands
--- (R4.2.1). A reading counts as the square of how far through the slot it was
--- taken, so the second half of a slot outweighs the first half seven to one and
--- a player who only just makes it still reads as having made it. That is what
--- separates "walking through the north quarter" from "standing in it"; an even
--- weighting would call a player who crossed at half time by a coin toss, and a
--- flat ramp would call one who crossed late by a whisker.
---
--- Readings the client would not answer weigh in too, on their own side. The
--- winner has to have been seen for more of the slot than we were blind for,
--- which is what stops one stray reading on a slot boundary from deciding a slot
--- nobody could see -- and it puts the burden at the end of the slot, where the
--- weights are biggest and the wave actually lands.
-local function resolveSlot(round, index)
-	local from = (index - 1) * round.slot
-	local span = round.slot
-	local weight, blind = {}, 0
-	local best, bestWeight = nil, 0
-
-	for _, sample in ipairs(round.samples) do
-		if sample.t > from and sample.t <= from + span then
-			local through = (sample.t - from) / span
-			local w = through * through
-			if sample.q then
-				local total = (weight[sample.q] or 0) + w
-				weight[sample.q] = total
-				if total > bestWeight then
-					best, bestWeight = sample.q, total
-				end
-			else
-				blind = blind + w
-			end
-		end
-	end
-
-	if bestWeight <= blind then return nil end
-	return best
-end
-
--- Give up on the round and say why. A run with a hole in it is worse than no
--- run: every later call would be shifted onto the wrong wave (R4.3).
-local function abandonRound(round, reason)
-	round.dead = true
-	stopSampler()
-	ns.Seq.Reset()
-	ns.Print("|cffff5555" .. reason .. "|r Nothing recorded for this round.")
-	-- Position going away entirely is the likeliest cause, and it is not
-	-- something the player can fix by trying again.
-	ns.Position.Verify()
-end
-
--- Put every slot up to `upTo` on the board. Called as the round runs so the
--- board fills wave by wave (R4.4) rather than appearing all at once.
-local function recordUpTo(round, upTo)
-	if round.dead or not round.recording then return end
-	if upTo > round.waves then upTo = round.waves end
-
-	while round.recorded < upTo do
-		local index = round.recorded + 1
-		local quadrant = resolveSlot(round, index)
-		if not quadrant then
-			abandonRound(round, ("Wave %d could not be read."):format(index))
-			return
-		end
-
-		-- Consecutive waves never use the same quarter, so this means the reading
-		-- is wrong rather than that the boss repeated itself (R4.5). Said out loud
-		-- and left on the board: the run is still the best evidence there is, and
-		-- binning it would take the good waves with the bad one.
-		if round.previous == quadrant then
-			ns.Print(("|cffffd200waves %d and %d both read as %s|r - the boss never repeats a "):format(
-				index - 1, index, ns.QUADRANT_NAME[quadrant])
-				.. "quarter, so check the board against what you saw.")
-		end
-
-		round.recorded = index
-		round.previous = quadrant
-		trace("wave %d read as %s", index, quadrant)
-		ns.Seq.Record(quadrant)
-	end
-end
-
-local function sample()
-	local round = showing
-	if not round or round.dead then return end
-
-	local elapsed = GetTime() - round.startedAt
-	round.samples[#round.samples + 1] = { t = elapsed, q = ns.Position.Quadrant() }
-
-	if round.waves then
-		recordUpTo(round, math.floor(elapsed / round.slot))
-	end
-end
-
--- ---------------------------------------------------------------------------
 -- The showing half
 -- ---------------------------------------------------------------------------
 
@@ -582,7 +473,6 @@ local function beginRound(aura, unit)
 	-- direction can be trusted.
 	settleWaveCount(true)
 	Detector.EndReplay()
-	stopSampler()
 
 	-- Each round stands alone (R2.5). Every counter that belongs to a round has
 	-- to be in this list: one left behind cost a logged pull its second and
@@ -607,16 +497,12 @@ local function beginRound(aura, unit)
 		if now - startedAt > declared then startedAt = now - declared end
 	end
 
+	-- The board is the player's to fill. What the round is for is the wave count
+	-- and the slot length, which is what drives the calling half.
 	local round = {
 		startedAt = startedAt,
 		unit      = unit,
 		length    = declared,
-		samples   = {},
-		recorded  = 0,
-		-- Only automatic mode reads the player's quarter for them. In the other
-		-- two the round still runs -- it is what tells us the wave count and
-		-- drives the calling half -- but the board is the player's to fill.
-		recording = ns.GetMode() == "auto",
 	}
 
 	-- A declared duration lets the slots start closing while the round is still
@@ -637,14 +523,10 @@ local function beginRound(aura, unit)
 	end
 
 	showing = round
-	sampler = C_Timer.NewTicker(SAMPLE_INTERVAL, sample)
 
-	trace("round: %s waves at %ss (%s), recording=%s, late by %.2fs",
+	trace("round: %s waves at %ss (%s), late by %.2fs",
 		tostring(round.waves), round.slot and ("%.3f"):format(round.slot) or "?",
-		round.difficulty or "difficulty unknown", tostring(round.recording), now - startedAt)
-	if round.recording and not ns.HasRoomCenter() then
-		trace("no room centre - every wave of this round will fail to read")
-	end
+		round.difficulty or "difficulty unknown", now - startedAt)
 	return round
 end
 
@@ -652,7 +534,6 @@ local function endRound(cutShort)
 	local round = showing
 	if not round then return false end
 	showing = nil
-	stopSampler()
 
 	local elapsed = GetTime() - round.startedAt
 	local length = round.length or elapsed
@@ -681,27 +562,18 @@ local function endRound(cutShort)
 		elapsed, round.length and ("%.3f"):format(round.length) or "?", tostring(waves))
 
 	if cutShort then
-		if round.recording then ns.Seq.Reset() end
 		lastRound = nil
-		ns.Print("|cffff5555round cut short|r - discarding it.")
+		-- The board stays: it is the player's own work, and this says nothing
+		-- about whether they typed it correctly. What is lost is the wave count.
+		ns.Print("|cffff5555round cut short|r - its wave count could not be read.")
 		return false
 	end
 
 	round.waves, round.slot, round.difficulty = waves, slot, diff
 
-	-- The board was filled against a guess and the guess ran long. The samples
-	-- are all still here, so the honest fix is to read the round again from the
-	-- start rather than leave a wave on the board that never happened.
-	if round.recording and round.recorded > waves then
-		trace("round was shorter than expected - re-reading it as %d waves", waves)
-		ns.Seq.Reset()
-		round.recorded, round.previous = 0, nil
-	end
-	recordUpTo(round, waves)
-
-	-- Kept even when the recording failed: the calling half still counts the
-	-- waves for us, and that is what corrects the slot length (R3.4). The unit is
-	-- kept too -- it is what says which of the bosses is allowed to call.
+	-- The calling half counts the waves for us, and that is what corrects the
+	-- slot length (R3.4). The unit is kept too -- it is what says which of the
+	-- bosses is allowed to call.
 	lastRound = {
 		length = length, waves = waves, slot = slot,
 		difficulty = diff, unit = round.unit,
@@ -906,7 +778,6 @@ local function arm(id, name)
 	showing, lastRound = nil, nil
 	calls, seenCasts, lastCallAt, unreadableCalls = 0, {}, nil, 0
 	roundIndex = 0
-	stopSampler()
 	Detector.EndReplay()
 
 	-- A pull starts with an empty board. Whatever is on it came from somewhere
@@ -920,15 +791,6 @@ local function arm(id, name)
 	-- back.
 	stopPoll()
 	roundPoll = C_Timer.NewTicker(POLL_INTERVAL, scanForRound)
-
-	-- The automatic modes stand on two things: the client handing out position,
-	-- and this client having measured the room. Say which one is missing now,
-	-- while there is still time to do something about it.
-	ns.Position.Verify()
-	if ns.GetMode() ~= "manual" and ns.IsModeChosen() and not ns.HasRoomCenter() then
-		ns.Print("|cffff5555no room centre measured|r - stand in the middle of the room and "
-			.. "run |cffffd200/ss measure|r, or the quadrants cannot be read.")
-	end
 
 	return true
 end
@@ -952,7 +814,6 @@ local function disarm()
 	showing, lastRound = nil, nil
 	calls, seenCasts, lastCallAt, unreadableCalls = 0, {}, nil, 0
 	roundIndex = 0
-	stopSampler()
 	stopPoll()
 	Detector.EndReplay()
 	ns.Seq.Reset()
@@ -1114,49 +975,6 @@ local function onChannelStop(unit)
 	return true
 end
 
--- Every aura the addon can see on the boss, printed. This exists because the
--- one thing that cannot be worked out from "nothing happened" is what the aura
--- is actually called on this client -- run it during the showing half and the
--- answer is on screen.
-function Detector.ScanAuras()
-	local total = 0
-
-	for _, unit in ipairs(CANDIDATE_UNITS) do
-		local exists = false
-		if type(UnitExists) == "function" then
-			local ok, result = pcall(UnitExists, unit)
-			exists = ok and result == true
-		end
-
-		-- Scanned whether or not the unit claims to exist. A unit token that
-		-- answers "no" and still has auras on it is exactly the kind of thing
-		-- worth finding out about, and gating on it is how the last scan came
-		-- back empty and said nothing.
-		local lines = {}
-		local _, seen, fault = forEachAura(unit, function(key, duration, _, name)
-			lines[#lines + 1] = ("      |cffffd200%s|r  %ss%s"):format(
-				describe(name),
-				duration and ("%.3f"):format(duration) or describe(nil),
-				key == SERMON_KEY and "  |cff44ff44<- this is the one|r" or "")
-			return nil
-		end)
-		total = total + seen
-
-		if seen > 0 or fault or exists then
-			ns.Print(("  %s: exists=%s auras=%d%s"):format(
-				unit, exists and "yes" or "no", seen,
-				fault and (" |cffff5555failed: " .. fault .. "|r") or ""))
-			for _, line in ipairs(lines) do ns.Print(line) end
-		end
-	end
-
-	if total == 0 then
-		ns.Print("|cffff5555no auras readable on any boss, target or nameplate unit.|r")
-		ns.Print("If the boss visibly has a buff right now, the client is not letting "
-			.. "addons see it - which is a different problem from a wrong name.")
-	end
-	return total
-end
 
 -- What this client is willing to tell the addon, measured rather than assumed.
 --
@@ -1178,8 +996,6 @@ function Detector.Probe()
 	end
 
 	ns.Print("what this client will tell SnakeSays:")
-	line("UnitPosition(player)", pcall(UnitPosition, "player"))
-	line("GetPlayerFacing()", pcall(GetPlayerFacing))
 
 	for _, unit in ipairs({ "boss1", "target" }) do
 		local exists = select(2, pcall(UnitExists, unit)) == true
@@ -1262,9 +1078,10 @@ end
 
 function Detector.IsArmed() return armed end
 
--- True while a round is being shown and has not been given up on.
-function Detector.IsRecording()
-	return showing ~= nil and not showing.dead
+-- True while a round is being shown -- which is the window in which the player
+-- should be filling the board.
+function Detector.IsShowingRound()
+	return showing ~= nil
 end
 
 -- The round in progress, for anything that wants to draw or report it: how many
@@ -1282,43 +1099,13 @@ function Detector.ActiveGrid()
 		startedAt  = round.startedAt,
 		length     = round.length or (round.waves * round.slot),
 		wave       = wave,
-		recorded   = round.recorded,
 	}
-end
-
--- Semi-automatic capture: the player picks the moment, the addon reads which
--- quadrant they are standing in.
---
--- Refused in automatic mode for the same reason board presses are (R8.5): the
--- addon is managing that recording and a stray press would shift it.
-function Detector.Capture()
-	if ns.GetMode() == "auto" then
-		ns.Print("automatic mode records by itself - the capture key is for |cffffd200semi-automatic|r.")
-		return false
-	end
-
-	local quadrant = ns.Position.Quadrant()
-	if not quadrant then
-		if not ns.HasRoomCenter() then
-			ns.Print("|cffff5555no room centre measured|r - stand in the middle and run |cffffd200/ss measure|r.")
-		elseif not ns.Position.IsAvailable() then
-			ns.Print("|cffff5555cannot read your position|r - use the board.")
-		else
-			ns.Print("|cffff5555too close to the centre to tell|r - step out and try again.")
-		end
-		return false
-	end
-
-	if not ns.Seq.Record(quadrant) then return false end
-	if ns.HUD then pcall(ns.HUD.Flash, quadrant) end
-	return true
 end
 
 -- Clear everything about the run in progress without disarming. The practice
 -- run calls this before staging its own.
 function Detector.Reset()
 	Detector.EndReplay()
-	stopSampler()
 	showing, lastRound = nil, nil
 	calls, seenCasts, lastCallAt, unreadableCalls = 0, {}, nil, 0
 	roundIndex = 0

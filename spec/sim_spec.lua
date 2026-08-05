@@ -19,7 +19,7 @@ end
 
 describe("demo practice run", function()
 	it("puts a run on the board without the player moving", function()
-		local ns = outside(enc.setup("auto"))
+		local ns = outside(enc.setup())
 
 		wow.slash("SNAKESAYS", "sim")
 		assert.is_true(ns.Sim.IsRunning())
@@ -30,7 +30,7 @@ describe("demo practice run", function()
 	end)
 
 	it("calls the run back out loud", function()
-		local ns = outside(enc.setup("auto"))
+		local ns = outside(enc.setup())
 
 		wow.slash("SNAKESAYS", "sim")
 		wow.advance(25)                     -- through the last call, before it clears
@@ -40,7 +40,7 @@ describe("demo practice run", function()
 	end)
 
 	it("announces exactly the run it said it would", function()
-		local ns = outside(enc.setup("auto"))
+		local ns = outside(enc.setup())
 
 		-- Pin the run so the assertion doesn't depend on the dice.
 		ns.Sim.StartDemo(3, { "W", "N", "S" })
@@ -50,13 +50,13 @@ describe("demo practice run", function()
 	end)
 
 	it("shows the run in chat before playing it", function()
-		local ns = outside(enc.setup("auto"))
+		local ns = outside(enc.setup())
 		ns.Sim.StartDemo(3, { "W", "N", "S" })
 		assert.is_true(wow.chatContains("Red > Orange > Blue"))
 	end)
 
 	it("flashes the board as each wave is revealed", function()
-		local ns = outside(enc.setup("auto"))
+		local ns = outside(enc.setup())
 		local flashes = {}
 		ns.HUD.Flash = function(dir) flashes[#flashes + 1] = dir end
 
@@ -66,7 +66,7 @@ describe("demo practice run", function()
 	end)
 
 	it("drives the on-screen call", function()
-		local ns = outside(enc.setup("auto"))
+		local ns = outside(enc.setup())
 		ns.Sim.StartDemo(3, { "W", "N", "S" })
 
 		wow.advance(8)                      -- through the reveal, past the first call
@@ -75,14 +75,14 @@ describe("demo practice run", function()
 	end)
 
 	it("works in manual mode, where the player records nothing themselves", function()
-		local ns = outside(enc.setup("manual"))
+		local ns = outside(enc.setup())
 		ns.Sim.StartDemo(3, { "W", "N", "S" })
 		wow.advance(40)
 		assert.equals(3, #wow.spoken)
 	end)
 
 	it("honours a longer phase", function()
-		outside(enc.setup("auto"))
+		outside(enc.setup())
 		wow.slash("SNAKESAYS", "sim 7")
 		wow.advance(50)
 		assert.equals(7, #wow.spoken)
@@ -91,7 +91,7 @@ describe("demo practice run", function()
 	-- A doubled call means the right move is to stand still, which is the one
 	-- thing a drill can't usefully rehearse -- and looks like a missed call.
 	it("never calls the same quadrant twice in a row", function()
-		local ns = outside(enc.setup("auto"))
+		local ns = outside(enc.setup())
 
 		for _ = 1, 50 do
 			ns.Sim.StartDemo(7)
@@ -105,7 +105,7 @@ describe("demo practice run", function()
 	end)
 
 	it("still uses every quadrant across a long enough run", function()
-		local ns = outside(enc.setup("auto"))
+		local ns = outside(enc.setup())
 
 		local seen = {}
 		for _ = 1, 50 do
@@ -120,40 +120,15 @@ describe("demo practice run", function()
 end)
 
 describe("practice run lifecycle", function()
-	it("restores a room centre that was never measured", function()
-		enc.setup("auto")
-		assert.is_nil(_G.SnakeSaysDB.roomCenter)
-
-		wow.slash("SNAKESAYS", "sim")
-		assert.is_not_nil(_G.SnakeSaysDB.roomCenter)   -- re-pinned while running
-
-		wow.slash("SNAKESAYS", "sim stop")
-		assert.is_nil(_G.SnakeSaysDB.roomCenter)
-	end)
-
-	it("restores a room centre the player had measured themselves", function()
-		local ns = enc.setup("auto")
-		wow.setPosition(300.5, 44.25, 0, ns.ROOM.instanceMapID)
-		ns.Position.MeasureCenter()
-
-		wow.slash("SNAKESAYS", "sim")
-		wow.advance(2)
-		wow.slash("SNAKESAYS", "sim stop")
-
-		assert.equals(300.5, ns.GetRoomCenter().a)
-		assert.equals(44.25, ns.GetRoomCenter().b)
-	end)
-
-	it("restores the centre when it finishes on its own", function()
-		local ns = enc.setup("auto")
+	it("finishes on its own", function()
+		local ns = enc.setup()
 		wow.slash("SNAKESAYS", "sim")
 		wow.advance(60)
 		assert.is_false(ns.Sim.IsRunning())
-		assert.is_nil(_G.SnakeSaysDB.roomCenter)
 	end)
 
 	it("leaves no replay state behind", function()
-		local ns = enc.setup("auto")
+		local ns = enc.setup()
 		wow.slash("SNAKESAYS", "sim")
 		wow.advance(5)
 		wow.slash("SNAKESAYS", "sim stop")
@@ -161,39 +136,23 @@ describe("practice run lifecycle", function()
 	end)
 
 	it("refuses to start twice over", function()
-		local ns = enc.setup("auto")
+		local ns = enc.setup()
 		wow.slash("SNAKESAYS", "sim")
 		wow.slash("SNAKESAYS", "sim")
 		assert.is_true(wow.chatContains("already"))
 		assert.is_true(ns.Sim.IsRunning())
 	end)
 
-	it("refuses to start when position is unreadable", function()
-		local ns = enc.setup("auto")
-		wow.setPosition(nil)
-		wow.slash("SNAKESAYS", "sim")
-		assert.is_false(ns.Sim.IsRunning())
-		assert.is_true(wow.chatContains("position"))
-	end)
-
 	it("says so when asked to stop nothing", function()
-		enc.setup("auto")
+		enc.setup()
 		wow.slash("SNAKESAYS", "sim stop")
 		assert.is_true(wow.chatContains("no practice run"))
-	end)
-
-	-- NOT YET WRITTEN: recorded runs need the engine that was removed.
-	it("says the recorded run is unavailable rather than starting one", function()
-		local ns = enc.setup("auto")
-		wow.slash("SNAKESAYS", "sim record")
-		assert.is_false(ns.Sim.IsRunning())
-		assert.is_true(wow.chatContains("rebuilt"))
 	end)
 end)
 
 describe("status report", function()
 	it("runs in every state without erroring", function()
-		local ns = enc.setup("auto")
+		local ns = enc.setup()
 		assert.has_no.errors(function() wow.slash("SNAKESAYS", "status") end)
 
 		enc.recordRun(ns, { "N", "E", "S" })
@@ -201,23 +160,14 @@ describe("status report", function()
 		assert.has_no.errors(function() wow.slash("SNAKESAYS", "status") end)
 	end)
 
-	it("survives no mode, no position and no facing", function()
-		enc.setup("auto")
-		_G.SnakeSaysDB.mode = nil
-		wow.setPosition(nil)
-		wow.setFacing(0, true)
-		assert.has_no.errors(function() wow.slash("SNAKESAYS", "status") end)
-		assert.is_true(wow.chatContains("not chosen"))
-	end)
-
-	it("says the room centre has not been measured", function()
-		enc.setup("auto")
+	it("reports the wave timing it is working from", function()
+		enc.setup()
 		wow.slash("SNAKESAYS", "status")
-		assert.is_true(wow.chatContains("not measured"))
+		assert.is_true(wow.chatContains("wave timing"))
 	end)
 
 	it("says whether we are in the delve", function()
-		enc.setup("auto")
+		enc.setup()
 		wow.slash("SNAKESAYS", "status")
 		assert.is_true(wow.chatContains("in the delve: |cff44ff44yes|r"))
 	end)
@@ -227,13 +177,13 @@ end)
 -- hidden by the map restriction. Showing nothing would defeat the point of it.
 describe("practice run visibility", function()
 	it("brings the board up for the run", function()
-		local ns = outside(enc.setup("auto"))
+		local ns = outside(enc.setup())
 		wow.slash("SNAKESAYS", "sim")
 		assert.is_true(ns.HUD.IsVisible())
 	end)
 
 	it("puts it away again when the run is stopped", function()
-		local ns = outside(enc.setup("auto"))
+		local ns = outside(enc.setup())
 		wow.slash("SNAKESAYS", "sim")
 		wow.advance(5)
 		wow.slash("SNAKESAYS", "sim stop")
@@ -241,7 +191,7 @@ describe("practice run visibility", function()
 	end)
 
 	it("puts it away when the run finishes on its own", function()
-		local ns = outside(enc.setup("auto"))
+		local ns = outside(enc.setup())
 		wow.slash("SNAKESAYS", "sim")
 		wow.advance(60)
 		assert.is_false(ns.Sim.IsRunning())
@@ -251,17 +201,23 @@ describe("practice run visibility", function()
 	-- The override lifts the *location* gate only. Switching a feature off is a
 	-- statement about wanting it at all, and a practice run shouldn't argue.
 	it("respects a board the player has hidden", function()
-		local ns = outside(enc.setup("auto"))
+		local ns = outside(enc.setup())
 		ns.SetShown(false)
 		wow.slash("SNAKESAYS", "sim")
 		assert.is_false(ns.HUD.IsVisible())
 	end)
 
 	it("does not leave the override set if the run never starts", function()
-		local ns = outside(enc.setup("auto"))
-		wow.setPosition(nil)
+		local ns = outside(enc.setup())
 		wow.slash("SNAKESAYS", "sim")
-		assert.is_false(ns.Sim.IsRunning())
+		assert.is_true(ns.Sim.IsRunning())
+
+		-- A second `/ss sim` is refused. The refusal must not tear down the
+		-- override the run that is already going is relying on.
+		wow.slash("SNAKESAYS", "sim")
+		assert.is_true(ns.HUD.IsVisible())
+
+		wow.slash("SNAKESAYS", "sim stop")
 		assert.is_false(ns.HUD.IsVisible())
 	end)
 end)

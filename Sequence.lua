@@ -50,28 +50,23 @@ local function append(quadrant, armAutoReset)
 	return true
 end
 
--- A quadrant the player picked themselves, by wedge click or quadrant keybind.
--- Returns true if it was recorded.
+-- A quadrant the player picked, by wedge click or quadrant keybind. This is how
+-- the board gets filled. Returns true if it was recorded.
 --
--- Rejected when manual input is blocked (automatic mode), at the cap, or when it
--- repeats the immediately preceding press -- that consecutive duplicate is
--- double-click noise rather than a real input, since a hand-driven recording
--- only advances when the player sees the quadrant change.
+-- Rejected at the cap, or when it repeats the immediately preceding press --
+-- that consecutive duplicate is double-click noise rather than a real input,
+-- since the player only presses when they see the quadrant change.
 function Seq.Press(quadrant)
-	if ns.GetBlockManualInput() then return false end
 	if list[#list] == quadrant then return false end
 	return append(quadrant, true)
 end
 
--- A quadrant the addon read off the player's position (automatic recording, or
--- the semi-automatic capture key). Never gated by the manual-input block, and
--- never deduplicated: one entry per wave is what keeps the recorded sequence
--- aligned with the boss' replay, and consecutive waves can share a quadrant.
+-- A quadrant staged by the addon itself rather than pressed. Only the practice
+-- run uses this: it puts a made-up sequence on the board to call back.
 --
--- Also never auto-reset. That timer is a safety net for hand-recorded runs left
--- lying around between pulls; a recorded run is cleared by the detector when its
--- replay finishes. The boss' longest phase plus its replay runs past the
--- auto-reset delay, so leaving it armed would wipe the run mid-call.
+-- Never deduplicated, since a made-up run is allowed to repeat, and never
+-- auto-reset -- that timer is a safety net for a hand-typed run left lying
+-- around between pulls, and the practice run clears up after itself.
 function Seq.Record(quadrant)
 	return append(quadrant, false)
 end

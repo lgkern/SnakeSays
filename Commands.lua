@@ -13,12 +13,6 @@ function SnakeSays_Press(dir)
 	end
 end
 
--- Semi-automatic capture: the player picks the moment, the addon reads which
--- quadrant they are standing in.
-function SnakeSays_Capture()
-	ns.Detector.Capture()
-end
-
 function SnakeSays_Reset()
 	ns.Seq.Reset()
 end
@@ -40,7 +34,6 @@ ns.BINDING_LABEL = {
 	SNAKESAYS_SOUTH   = "Press South quadrant",
 	SNAKESAYS_WEST    = "Press West quadrant",
 	SNAKESAYS_RESET   = "Reset sequence",
-	SNAKESAYS_CAPTURE = "Quadrant detection (semi-automatic)",
 }
 
 local function bindButton(name, onClick)
@@ -53,7 +46,6 @@ bindButton("SNAKESAYS_NORTH",   function() SnakeSays_Press("N") end)
 bindButton("SNAKESAYS_EAST",    function() SnakeSays_Press("E") end)
 bindButton("SNAKESAYS_SOUTH",   function() SnakeSays_Press("S") end)
 bindButton("SNAKESAYS_WEST",    function() SnakeSays_Press("W") end)
-bindButton("SNAKESAYS_CAPTURE", function() SnakeSays_Capture() end)
 bindButton("SNAKESAYS_RESET",   function() SnakeSays_Reset() end)
 
 -- AddOn Compartment button (the icon on the minimap compartment, see the .toc).
@@ -75,15 +67,11 @@ local out = ns.Print
 local function help()
 	out("commands:")
 	out("  /ss            open options (markers, HUD, keybinds)")
-	out("  /ss mode       show the mode; `/ss mode auto|semi|manual` sets it")
-	out("  /ss measure    re-pin the room centre to where you stand")
 	out("  /ss sim        demo run anywhere; `/ss sim 7` for a 7-wave phase")
-	out("                 `/ss sim record` records from where you stand")
 	out("                 `/ss sim stop` ends it")
 	out("  /ss status     report what the addon currently sees")
-	out("  /ss auras      list the auras it can see on the boss right now")
 	out("  /ss probe      report which of the client's reads still work in here")
-	out("  /ss sound      test the voice and the bell, and say what the client did")
+	out("  /ss sound      test the voice and say what the client did")
 	out("  /ss debug      step-by-step detection output in chat")
 	out("  /ss show | hide")
 	out("  /ss toggle     toggle the HUD")
@@ -93,76 +81,20 @@ local function help()
 	out("  /ss options    open options")
 end
 
--- The list of mode keys, for the error line ("auto, semi, manual").
-local function modeKeyList()
-	local keys = {}
-	for _, mode in ipairs(ns.MODES) do keys[#keys + 1] = mode.key end
-	return table.concat(keys, ", ")
-end
-
-local function modeCommand(arg)
-	if arg == "" then
-		local key = ns.GetMode()
-		if key then
-			out(("mode is |cffffd200%s|r. Change it with /ss mode %s"):format(ns.MODE_NAME[key], modeKeyList()))
-		else
-			out(("no mode chosen yet. Pick one with /ss mode %s"):format(modeKeyList()))
-		end
-		return
-	end
-	if ns.SetMode(arg) then
-		out(("mode set to |cffffd200%s|r."):format(ns.MODE_NAME[arg]))
-	else
-		out(("unknown mode '%s'. Valid modes: %s"):format(arg, modeKeyList()))
-	end
-end
-
--- `/ss measure` re-pins the room centre to where the player is standing, and
--- `/ss measure reset` puts the shipped constants back.
-local function measureCommand(arg)
-	if arg == "reset" then
-		ns.Position.ClearMeasuredCenter()
-		out("room centre reset to the built-in value.")
-		return
-	end
-	if ns.Position.MeasureCenter() then
-		local center = ns.GetRoomCenter()
-		out(("room centre set to where you stand (%.2f, %.2f)."):format(center.a, center.b))
-	else
-		out("|cffff5555could not read your position|r - room centre unchanged.")
-	end
-end
-
 -- `/ss status` dumps what the addon currently believes. It exists so a problem
 -- in the field can be described precisely instead of as "nothing happened".
 local function statusCommand()
 	local function yes(v) return v and "|cff44ff44yes|r" or "|cffff5555no|r" end
 
 	out("status:")
-	out("  mode: " .. (ns.MODE_NAME[ns.GetMode()] or "|cffff5555not chosen|r"))
 	out("  in the delve: " .. yes(ns.InDelve()))
-
-	local quadrant = ns.Position.Quadrant()
-	local distance = ns.Position.Distance()
-	out(("  position readable: %s%s"):format(
-		yes(ns.Position.IsAvailable()),
-		quadrant and (" (" .. quadrant .. ", %.1f yd from centre)"):format(distance or 0)
-			or (distance and (" (centre, %.1f yd)"):format(distance) or "")))
-
-	local center = ns.GetRoomCenter()
-	if center then
-		out(("  room centre: %.2f, %.2f (measured)"):format(center.a, center.b))
-	else
-		out("  room centre: |cffff5555not measured|r - stand in the middle and run /ss measure")
-	end
-	out("  facing readable: " .. yes(ns.Position.Facing() ~= nil))
 
 	out(("  board: shown=%s visible=%s"):format(
 		yes(ns.IsShown()), yes(ns.HUD.IsVisible())))
 	out("  only inside the delve map: " .. yes(ns.GetRestrictToMap()))
 
-	out(("  encounter: armed=%s recording=%s replaying=%s step=%d of %d"):format(
-		yes(ns.Detector.IsArmed()), yes(ns.Detector.IsRecording()),
+	out(("  encounter: armed=%s round showing=%s replaying=%s step=%d of %d"):format(
+		yes(ns.Detector.IsArmed()), yes(ns.Detector.IsShowingRound()),
 		yes(ns.Detector.IsReplaying()), ns.Detector.EchoIndex(), ns.Seq.Count()))
 	local function timing(diff)
 		return ("%.3fs%s"):format(ns.SlotLength(diff), ns.IsSlotLearned(diff) and " (learned)" or "")
@@ -184,13 +116,7 @@ end
 -- Handlers taking an argument get it as their first parameter; the rest ignore it.
 local handlers = {
 	[""]        = function() ns.Options.Open() end,
-	mode        = modeCommand,
-	measure     = measureCommand,
 	status      = statusCommand,
-	auras       = function()
-		out("auras the addon can see:")
-		ns.Detector.ScanAuras()
-	end,
 	probe       = function() ns.Detector.Probe() end,
 	sound       = function() ns.Announce.SelfTest() end,
 	debug       = function(arg)

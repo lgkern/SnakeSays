@@ -3,24 +3,13 @@ local _, ns = ...
 -- ===========================================================================
 -- Sim.lua  ·  practice run, anywhere.
 --
--- Two shapes, because there are two different things worth rehearsing:
+-- `/ss sim` makes up a run, shows it going onto the board one wave at a time,
+-- then calls it back with the real voice and popup. Nothing to move to and
+-- nothing to press -- this is for checking that the announcements work and for
+-- placing the windows.
 --
---   /ss sim          makes up a run, shows it going onto the board, then calls
---                    it back with the real voice, bell and popup. You
---                    don't have to move -- this is for checking that the
---                    announcements work and for placing the windows.
---   /ss sim record   records the run from where you actually stand, the way a
---                    real pull does. You become the centre of the room, so walk
---                    around during the wave phase.
---
--- Both drive the shipped detector through the same events the client fires, so
--- what happens here is what happens in the delve.
---
--- Two concessions to running outside the room: the room centre is temporarily
--- re-pinned to wherever the player is standing (so "north of centre" means north
--- of them, and the bell has something to measure against), and the
--- boss unit token is faked. The original centre is put back when the run ends,
--- however it ends.
+-- It drives the shipped detector through the same replay seam the boss does, so
+-- what is heard and seen here is what happens in the delve.
 -- ===========================================================================
 
 local Sim = {}
@@ -34,8 +23,6 @@ local ECHO_GAP = 3       -- seconds between silent repeats
 
 local running = false
 local timers = {}
-local savedCenter
-local centerWasStored
 
 local function cancelTimers()
 	for _, timer in ipairs(timers) do
@@ -48,24 +35,12 @@ local function at(delay, fn)
 	timers[#timers + 1] = C_Timer.NewTimer(delay, fn)
 end
 
--- Put the real room centre back exactly as it was: absent if the player had
--- never measured one, otherwise the value they measured.
-local function restoreCenter()
-	if centerWasStored then
-		ns.db().roomCenter = savedCenter
-	else
-		ns.db().roomCenter = nil
-	end
-	savedCenter, centerWasStored = nil, nil
-end
-
 -- The single way out. Every ending -- stopped by hand, run to completion, or
--- abandoned before it started -- goes through here, so the borrowed room centre
--- and the borrowed window visibility can't be left behind.
+-- abandoned before it started -- goes through here, so the borrowed window
+-- visibility can't be left behind.
 local function tearDown()
 	running = false
 	cancelTimers()
-	restoreCenter()
 	ns.SetVisibilityOverride(false)
 end
 
@@ -91,15 +66,6 @@ local function begin(waves)
 
 	waves = tonumber(waves) or DEFAULT_WAVES
 	if waves < 1 then waves = 1 elseif waves > MAX_WAVES then waves = MAX_WAVES end
-
-	-- Re-pin the centre to the player's feet so quadrants mean something here.
-	if not ns.Position.IsAvailable() then
-		ns.Print("|cffff5555could not read your position|r - cannot start a practice run.")
-		return nil
-	end
-	savedCenter = ns.db().roomCenter
-	centerWasStored = savedCenter ~= nil
-	ns.Position.MeasureCenter()
 
 	running = true
 	cancelTimers()
@@ -190,26 +156,8 @@ function Sim.StartDemo(waves, forcedRun)
 	return true
 end
 
--- ---------------------------------------------------------------------------
--- Recorded run: the real thing, driven by where the player stands
---
--- This rehearsed the recording engine, which is not written yet -- see
--- SPEC-detection.md. It says so rather than starting a run that could never
--- record anything.
--- ---------------------------------------------------------------------------
-
-function Sim.StartRecorded()
-	ns.Print("|cffff5555recorded practice runs need the detection engine|r, which is being rebuilt.")
-	ns.Print("`/ss sim` still works: it plays a made-up run so you can check the calls.")
-	return false
-end
-
--- `/ss sim`, `/ss sim 7`, `/ss sim record`, `/ss sim record 7`, `/ss sim stop`.
+-- `/ss sim`, `/ss sim 7`, `/ss sim stop`.
 function Sim.Start(arg)
 	arg = tostring(arg or ""):lower()
-	local mode, count = arg:match("^(%a*)%s*(%d*)$")
-	if mode == "record" or mode == "live" then
-		return Sim.StartRecorded(count ~= "" and count or nil)
-	end
 	return Sim.StartDemo(arg ~= "" and tonumber(arg) or nil)
 end

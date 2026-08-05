@@ -35,10 +35,8 @@ local KB_X = LEFT + ICON_ROW_W + 14
 local panel, categoryID
 local iconButtons = {}    -- dir -> { markerId -> button }
 local keybindButtons = {} -- command -> button
-local modeButtons = {}    -- mode key -> radio button
 local styleButtons = {}   -- announce style key -> radio button
-local arrivalButtons = {} -- arrival cue key -> radio button
-local showCB, lockCB, autoResetCB, timerSlider, timerValue, restrictCB, blockInputCB
+local showCB, lockCB, autoResetCB, timerSlider, timerValue, restrictCB
 local ttsCB, overlapCB, popupCB, subtitleCB
 local volumeSlider, volumeValue
 local scaleSliders = {}   -- the three window-size sliders, refreshed together
@@ -51,7 +49,6 @@ local BIND_COMMAND = {
 	S = "SNAKESAYS_SOUTH", W = "SNAKESAYS_WEST",
 }
 local RESET_COMMAND = "SNAKESAYS_RESET"
-local CAPTURE_COMMAND = "SNAKESAYS_CAPTURE"
 
 local MODIFIER_KEYS = {
 	LSHIFT = true, RSHIFT = true, LCTRL = true, RCTRL = true, LALT = true, RALT = true,
@@ -196,37 +193,6 @@ local function buildKeybindButton(command, x, y)
 end
 
 -- ---------------------------------------------------------------------------
--- Mode picker
---
--- Three radio buttons rather than a dropdown: the choice drives how the whole
--- addon behaves, so it should be readable at a glance without opening anything.
--- ---------------------------------------------------------------------------
-
-local function buildModeRow(mode, x, y)
-	local b = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
-	b:SetPoint("TOPLEFT", panel, "TOPLEFT", x, y)
-	b:SetScript("OnClick", function()
-		ns.SetMode(mode.key)
-		Options.Refresh()
-	end)
-
-	local text = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-	text:SetPoint("LEFT", b, "RIGHT", 4, 0)
-	text:SetText(mode.name)
-
-	b:SetScript("OnEnter", function()
-		GameTooltip:SetOwner(b, "ANCHOR_RIGHT")
-		GameTooltip:SetText(mode.name)
-		GameTooltip:AddLine(mode.desc, 1, 1, 1, true)
-		GameTooltip:Show()
-	end)
-	b:SetScript("OnLeave", hideTooltip)
-
-	modeButtons[mode.key] = b
-	return b, text
-end
-
--- ---------------------------------------------------------------------------
 -- Checkboxes
 -- ---------------------------------------------------------------------------
 
@@ -342,39 +308,13 @@ local function buildAnnounceColumn()
 
 	overlapCB = buildCheckbox("Let calls overlap each other", -208,
 		ns.GetTTSOverlap, ns.SetTTSOverlap, ANNOUNCE_X)
-	-- Three radios rather than a checkbox: "make a noise" and "tell me out loud"
-	-- are different wants, and neither is a louder version of the other.
-	--
-	-- Packed by measured width rather than on a fixed pitch. This column is only
-	-- so wide, and three labels of the length these have on a hundred-pixel
-	-- pitch put the last one off the edge of the panel -- which is not something
-	-- a constant can be tuned to avoid at every font size.
-	local arrivalLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-	arrivalLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", ANNOUNCE_X + 24, -234)
-	arrivalLabel:SetText("When reach the safe slice:")
-
-	local RADIO_W, TEXT_GAP, GROUP_GAP = 20, 4, 14
-	local arrivalX = ANNOUNCE_X
-	for _, cue in ipairs(ns.ARRIVAL_CUES) do
-		local b = CreateFrame("CheckButton", nil, panel, "UIRadioButtonTemplate")
-		b:SetPoint("TOPLEFT", panel, "TOPLEFT", arrivalX, -252)
-		b:SetScript("OnClick", function()
-			ns.SetArrivalCue(cue.key)
-			Options.Refresh()
-		end)
-		local text = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-		text:SetPoint("LEFT", b, "RIGHT", TEXT_GAP, 0)
-		text:SetText(cue.name)
-		arrivalButtons[cue.key] = b
-		arrivalX = arrivalX + RADIO_W + TEXT_GAP + (text:GetStringWidth() or 60) + GROUP_GAP
-	end
-	popupCB = buildCheckbox("Show the call on screen", -278,
+	popupCB = buildCheckbox("Show the call on screen", -234,
 		ns.GetPopupEnabled, ns.SetPopupEnabled, ANNOUNCE_X)
-	subtitleCB = buildCheckbox("Include the next-up line", -304,
+	subtitleCB = buildCheckbox("Include the next-up line", -260,
 		ns.GetPopupSubtitle, ns.SetPopupSubtitle, ANNOUNCE_X + 24)
 
 	local moveHint = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-	moveHint:SetPoint("TOPLEFT", panel, "TOPLEFT", ANNOUNCE_X + 24, -330)
+	moveHint:SetPoint("TOPLEFT", panel, "TOPLEFT", ANNOUNCE_X + 24, -286)
 	moveHint:SetText("Unlock the HUD to drag the board and the call.")
 
 	local sizeHeading = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -401,15 +341,12 @@ local function buildPanel()
 	hint:SetPoint("TOPLEFT", LEFT, -38)
 	hint:SetText("Click a marker to assign · click a key box to bind (right-click clears)")
 
-	local modeLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	modeLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", LEFT, -62)
-	modeLabel:SetText("Recording mode")
-
-	local modeX = LEFT
-	for _, mode in ipairs(ns.MODES) do
-		buildModeRow(mode, modeX, -84)
-		modeX = modeX + 26 + #mode.name * 7 + 18
-	end
+	local howLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+	howLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", LEFT, -62)
+	howLabel:SetText("Press the quadrants on the board or by keybind as the waves are shown; "
+		.. "SnakeSays calls them back when the boss repeats them.")
+	howLabel:SetWidth(430)
+	howLabel:SetJustifyH("LEFT")
 
 	local y = -128
 	for _, dir in ipairs(ns.QUADRANTS) do
@@ -429,14 +366,7 @@ local function buildPanel()
 		y = y - 52
 	end
 
-	-- Capture and reset rows: labels on the left, key boxes aligned with the
-	-- quadrant ones above.
-	local captureBtn = buildKeybindButton(CAPTURE_COMMAND, KB_X, y - 2)
-	local captureLbl = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	captureLbl:SetPoint("LEFT", captureBtn, "LEFT", -(KB_X - LEFT), 0)
-	captureLbl:SetText("Quadrant detection")
-	y = y - 30
-
+	-- Reset row: label on the left, key box aligned with the quadrant ones above.
 	local resetBtn = buildKeybindButton(RESET_COMMAND, KB_X, y - 2)
 	local resetLbl = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	resetLbl:SetPoint("LEFT", resetBtn, "LEFT", -(KB_X - LEFT), 0)
@@ -475,9 +405,6 @@ local function buildPanel()
 	restrictCB = buildCheckbox("Only show the HUD inside the Delve Nemesis map", y - 142,
 		ns.GetRestrictToMap, ns.SetRestrictToMap)
 
-	blockInputCB = buildCheckbox("Ignore board clicks and quadrant keybinds", y - 168,
-		ns.GetBlockManualInput, ns.SetBlockManualInput)
-
 	buildAnnounceColumn()
 
 	panel:SetScript("OnShow", Options.Refresh)
@@ -494,11 +421,6 @@ function Options.Refresh()
 		end
 	end
 	refreshKeybinds()
-	local mode = ns.GetMode()
-	for key, b in pairs(modeButtons) do
-		b:SetChecked(key == mode)
-	end
-	blockInputCB:SetChecked(blockInputCB.getter())
 	showCB:SetChecked(showCB.getter())
 	lockCB:SetChecked(lockCB.getter())
 	autoResetCB:SetChecked(autoResetCB.getter())
@@ -511,11 +433,6 @@ function Options.Refresh()
 	local style = ns.GetAnnounceStyle()
 	for key, b in pairs(styleButtons) do
 		b:SetChecked(key == style)
-	end
-
-	local cue = ns.GetArrivalCue()
-	for key, b in pairs(arrivalButtons) do
-		b:SetChecked(key == cue)
 	end
 
 	local speaking = ns.GetTTSEnabled()

@@ -8,50 +8,49 @@
 local wow = require("spec.helpers.wow")
 local enc = require("spec.helpers.encounter")
 
-local HARD_PATH   = { "N", "E", "S", "W", "N" }          -- 5 waves
-local NORMAL_PATH = { "W", "N", "E" }                    -- 3 waves
+local HARD_PATH = { "N", "E", "S", "W", "N" }            -- 5 waves
 
 describe("recognising the encounter", function()
 	it("arms on the normal encounter id", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.NORMAL)
 		assert.is_true(ns.Detector.IsArmed())
 	end)
 
 	it("arms on the hard encounter id", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 		assert.is_true(ns.Detector.IsArmed())
 	end)
 
 	it("ignores an encounter that is not this boss", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, 1234, "Some Other Boss")
 		assert.is_false(ns.Detector.IsArmed())
 	end)
 
 	it("arms on the name when the ids have been renumbered", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, 9999, "Azta'rec")
 		assert.is_true(ns.Detector.IsArmed())
 	end)
 
 	it("still reads a round when it only had the name to go on", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, 9999, "Azta'rec")
 		enc.showRound(ns, HARD_PATH, { difficulty = enc.HARD })
 		assert.same(HARD_PATH, ns.Seq.Get())
 	end)
 
 	it("disarms and forgets the pull when the encounter ends", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 		enc.showRound(ns, HARD_PATH, { difficulty = enc.HARD })
 		assert.equals(5, ns.Seq.Count())
 
 		enc.kill(ns)
 		assert.is_false(ns.Detector.IsArmed())
-		assert.is_false(ns.Detector.IsRecording())
+		assert.is_false(ns.Detector.IsShowingRound())
 		assert.equals(0, ns.Seq.Count())
 	end)
 
@@ -60,7 +59,7 @@ describe("recognising the encounter", function()
 	-- the boss opens with ordinary abilities, and with a run already sitting
 	-- there they were being called back as though the boss had shown them.
 	it("starts a pull with an empty board, whatever was left on it", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		ns.Sim.StartDemo(5, { "N", "E", "S", "W", "N" })
 		wow.advance(60)                             -- the run finishes on its own
 		assert.is_false(ns.Sim.IsRunning())
@@ -71,7 +70,7 @@ describe("recognising the encounter", function()
 	end)
 
 	it("ignores the boss' opening casts, before any round has been shown", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		ns.Sim.StartDemo(3, { "N", "E", "S" })
 		wow.advance(60)
 		ns.Sim.Stop(true)
@@ -92,10 +91,10 @@ describe("recognising the encounter", function()
 	end)
 
 	it("does nothing with the boss' aura before the encounter starts", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		wow.applyAura("boss1", enc.SERMON, 15.015)
 		wow.advance(16)
-		assert.is_false(ns.Detector.IsRecording())
+		assert.is_false(ns.Detector.IsShowingRound())
 		assert.equals(0, ns.Seq.Count())
 	end)
 end)
@@ -111,7 +110,7 @@ describe("the round as a channel", function()
 	local RUN = { "N", "E", "S" }
 
 	it("reads the round off the channel when auras are refused outright", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 		wow.aurasBlocked = true
 
@@ -123,7 +122,7 @@ describe("the round as a channel", function()
 	end)
 
 	it("calls it back with auras still refused", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 		wow.aurasBlocked = true
 
@@ -132,7 +131,7 @@ describe("the round as a channel", function()
 	end)
 
 	it("takes the round's length from the channel's own start and end", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.NORMAL)
 		wow.aurasBlocked = true
 
@@ -142,7 +141,7 @@ describe("the round as a channel", function()
 	end)
 
 	it("names the channel even when its spell id is secret", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 		wow.aurasBlocked = true
 
@@ -151,7 +150,7 @@ describe("the round as a channel", function()
 	end)
 
 	it("takes an unnamed channel on the id the author's log recorded", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 		wow.aurasBlocked = true
 
@@ -160,7 +159,7 @@ describe("the round as a channel", function()
 	end)
 
 	it("leaves a channel alone that is neither named nor identified", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 		wow.aurasBlocked = true
 
@@ -168,33 +167,34 @@ describe("the round as a channel", function()
 		wow.advance(9.009)
 		wow.stopChannel("boss1")
 
-		assert.is_false(ns.Detector.IsRecording())
+		assert.is_false(ns.Detector.IsShowingRound())
 		assert.equals(0, ns.Seq.Count())
 	end)
 
 	it("ends the round the moment the channel stops, not a poll later", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 		wow.aurasBlocked = true
 
 		local slot = enc.SLOT[enc.HARD]
 		wow.startChannel("boss1", enc.SERMON_SPELL, slot * 3)
 		for _, quadrant in ipairs(RUN) do
-			enc.standAt(ns, quadrant)
+			ns.Seq.Press(quadrant)
 			wow.advance(slot)
 		end
 		wow.stopChannel("boss1")
 
-		assert.is_false(ns.Detector.IsRecording())
+		assert.is_false(ns.Detector.IsShowingRound())
 		assert.same(RUN, ns.Seq.Get())
 	end)
 
-	it("says so plainly when the aura API is the only thing that was tried", function()
-		local ns = enc.ready("auto")
+	-- `/ss probe` is what is left to run in the field when nothing happens, and
+	-- it has to survive the aura API being the thing that is refusing.
+	it("reports the refusal rather than throwing on it", function()
+		enc.ready()
 		wow.aurasBlocked = true
-		assert.has_no.errors(function() wow.slash("SNAKESAYS", "auras") end)
-		assert.is_true(wow.chatContains("no auras readable"))
-		assert.is_not_nil(ns.Detector.Probe)
+		assert.has_no.errors(function() wow.slash("SNAKESAYS", "probe") end)
+		assert.is_true(wow.chatContains("what this client will tell SnakeSays"))
 	end)
 end)
 
@@ -210,7 +210,7 @@ describe("a logged pull, as the client actually delivered it", function()
 	end
 
 	it("records three waves and calls exactly those three back", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		ns.SetDebug(true)
 		enc.pull(ns, enc.NORMAL)
 		wow.aurasBlocked = true
@@ -231,7 +231,7 @@ describe("a logged pull, as the client actually delivered it", function()
 		wow.startChannel("boss1", 1288103, 10.51, { secret = true, nameless = true })
 
 		for _, quadrant in ipairs({ "N", "E", "S" }) do
-			enc.standAt(ns, quadrant)
+			ns.Seq.Press(quadrant)
 			now = at(now + 10.51 / 3, now)
 		end
 
@@ -259,7 +259,7 @@ describe("a logged pull, as the client actually delivered it", function()
 	-- round spent the per-round budget for taking unidentifiable casts, and the
 	-- second round's calls arrived to find it already gone.
 	it("gives every round of a pull its own budget of unreadable calls", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.NORMAL)
 		wow.aurasBlocked = true
 
@@ -273,7 +273,7 @@ describe("a logged pull, as the client actually delivered it", function()
 			local length = #path * enc.SLOT[enc.NORMAL]
 			wow.startChannel("boss1", 1288103, length, { secret = true, nameless = true })
 			for _, quadrant in ipairs(path) do
-				enc.standAt(ns, quadrant)
+				ns.Seq.Press(quadrant)
 				wow.advance(length / #path)
 			end
 			wow.stopChannel("boss1")
@@ -296,36 +296,35 @@ describe("a logged pull, as the client actually delivered it", function()
 		assert.is_false(wow.chatContains("cut short"))
 	end)
 
-	it("fills the board as the round runs even when the channel will not say how long it is", function()
-		local ns = enc.ready("auto")
+	-- With the channel's own times unreadable, the round's length can only be
+	-- measured end to end -- so the wave count is not known until it closes. What
+	-- must not happen is the round being written off, which would take the
+	-- player's presses down with it.
+	it("still reads the round when the channel will not say how long it is", function()
+		local ns = enc.ready()
 		enc.pull(ns, enc.NORMAL)
 		wow.aurasBlocked = true
 
 		local slot = enc.SLOT[enc.NORMAL]
 		wow.startChannel("boss1", 1288103, slot * 3, { secret = true, nameless = true, timeless = true })
 
-		local seen, held = {}, {}
 		for _, quadrant in ipairs({ "N", "E", "S" }) do
-			enc.standAt(ns, quadrant)
-			for _ = 1, 6 do
-				wow.advance(slot / 6)
-				local count = ns.Seq.Count()
-				if not held[count] then
-					held[count] = true
-					seen[#seen + 1] = count
-				end
-			end
+			wow.advance(slot * 0.5)
+			ns.Seq.Press(quadrant)
+			wow.advance(slot * 0.5)
 		end
 		wow.stopChannel("boss1")
 
-		-- It grew a wave at a time while the round was still running, rather than
-		-- landing all at once at the close.
-		assert.same({ 0, 1, 2, 3 }, seen)
 		assert.same({ "N", "E", "S" }, ns.Seq.Get())
+		assert.is_false(wow.chatContains("cut short"))
+
+		-- And the calling half then runs off it.
+		enc.callRound(ns, 3, { difficulty = enc.NORMAL })
+		assert.same({ "Orange", "Purple", "Blue" }, wow.spokenText())
 	end)
 
 	it("re-reads the round when it turns out shorter than the pull's shape implied", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.NORMAL)
 		wow.aurasBlocked = true
 
@@ -333,8 +332,8 @@ describe("a logged pull, as the client actually delivered it", function()
 		-- in live. This one runs for two.
 		local slot = enc.SLOT[enc.NORMAL]
 		wow.startChannel("boss1", 1288103, slot * 2, { secret = true, nameless = true, timeless = true })
-		enc.standAt(ns, "N"); wow.advance(slot)
-		enc.standAt(ns, "E"); wow.advance(slot)
+		ns.Seq.Press("N"); wow.advance(slot)
+		ns.Seq.Press("E"); wow.advance(slot)
 		wow.stopChannel("boss1")
 
 		assert.same({ "N", "E" }, ns.Seq.Get())
@@ -347,14 +346,14 @@ describe("a logged pull, as the client actually delivered it", function()
 	-- every one of them through: a logged hard round spent two of its five calls
 	-- on the wrong boss and ran through the whole run in half the time.
 	it("ignores the second boss on hard when nothing about a cast can be read", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 		wow.aurasBlocked = true
 
 		local path = { "E", "W", "E", "N", "E" }
 		wow.startChannel("boss1", enc.SERMON_SPELL, 15.015, { secret = true, nameless = true })
 		for _, quadrant in ipairs(path) do
-			enc.standAt(ns, quadrant)
+			ns.Seq.Press(quadrant)
 			wow.advance(15.015 / #path)
 		end
 		wow.stopChannel("boss1")
@@ -384,14 +383,14 @@ describe("a logged pull, as the client actually delivered it", function()
 	end)
 
 	it("identifies the channel by the one id the log recorded", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.NORMAL)
 		wow.aurasBlocked = true
 
 		-- Named nothing, but the id is readable and is normal's.
 		wow.startChannel("boss1", 1288103, 10.509, { nameless = true })
 		for _, quadrant in ipairs({ "N", "E", "S" }) do
-			enc.standAt(ns, quadrant)
+			ns.Seq.Press(quadrant)
 			wow.advance(10.509 / 3)
 		end
 		wow.stopChannel("boss1")
@@ -402,13 +401,13 @@ describe("a logged pull, as the client actually delivered it", function()
 	-- Normal changes the id every round, so an unrecognised one has to be able
 	-- to get through on the shape of the round alone.
 	it("takes a channel whose id it has never seen, on its length", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.NORMAL)
 		wow.aurasBlocked = true
 
 		wow.startChannel("boss1", 4242424, 14.012, { nameless = true })   -- 4 slots
 		for _, quadrant in ipairs({ "N", "E", "S", "W" }) do
-			enc.standAt(ns, quadrant)
+			ns.Seq.Press(quadrant)
 			wow.advance(14.012 / 4)
 		end
 		wow.stopChannel("boss1")
@@ -417,18 +416,20 @@ describe("a logged pull, as the client actually delivered it", function()
 	end)
 
 	it("throws out a channel that is not a whole number of slots", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.NORMAL)
 		wow.aurasBlocked = true
 
 		-- Some other channel entirely: 5.2s is no whole count of 3.503s slots.
 		wow.startChannel("boss1", 777, 5.2, { nameless = true })
-		enc.standAt(ns, "N")
 		wow.advance(5.2)
 		wow.stopChannel("boss1")
 
-		assert.equals(0, ns.Seq.Count())
 		assert.is_true(wow.chatContains("cut short"))
+
+		-- Nothing was learned from it, so nothing gets called back off it either.
+		enc.callRound(ns, 3, { difficulty = enc.NORMAL })
+		assert.is_false(ns.Detector.IsReplaying())
 	end)
 end)
 
@@ -436,13 +437,13 @@ describe("finding the round's aura", function()
 	local CURLY = "Sermon of Ula\226\128\153tek"     -- U+2019, not an ASCII quote
 
 	it("does not care which apostrophe the client spells it with", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 
 		local slot = enc.SLOT[enc.HARD]
 		wow.applyAura("boss1", CURLY, slot * 3)
 		for _, quadrant in ipairs({ "N", "E", "S" }) do
-			enc.standAt(ns, quadrant)
+			ns.Seq.Press(quadrant)
 			wow.advance(slot)
 		end
 		wow.removeAura("boss1", CURLY)
@@ -451,7 +452,7 @@ describe("finding the round's aura", function()
 	end)
 
 	it("finds it on a unit that never gets a boss frame", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 
 		wow.guids.boss1 = nil
@@ -462,8 +463,9 @@ describe("finding the round's aura", function()
 		local slot = enc.SLOT[enc.HARD]
 		wow.applyAura("target", enc.SERMON, slot * 3, { silent = true })
 		for _, quadrant in ipairs({ "N", "E", "S" }) do
-			enc.standAt(ns, quadrant)
-			wow.advance(slot)
+			wow.advance(slot * 0.5)
+			ns.Seq.Press(quadrant)
+			wow.advance(slot * 0.5)
 		end
 		wow.removeAura("target", enc.SERMON, { silent = true })
 		wow.advance(0.4)                            -- let the poll notice
@@ -472,7 +474,7 @@ describe("finding the round's aura", function()
 	end)
 
 	it("dates the round from the aura's expiry, not from when it was noticed", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 
 		-- A whole second of the round is already gone by the time anything looks.
@@ -481,7 +483,7 @@ describe("finding the round's aura", function()
 		local slot = enc.SLOT[enc.HARD]
 		wow.applyAura("boss1", enc.SERMON, slot * 3, { startedAgo = 1.0 })
 		for _, quadrant in ipairs({ "N", "E", "S" }) do
-			enc.standAt(ns, quadrant)
+			ns.Seq.Press(quadrant)
 			wow.advance((slot * 3 - 1.0) / 3)
 		end
 		wow.removeAura("boss1", enc.SERMON)
@@ -491,7 +493,7 @@ describe("finding the round's aura", function()
 	end)
 
 	it("survives the client making the boss' auras secret", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 
 		local slot = enc.SLOT[enc.HARD]
@@ -506,97 +508,64 @@ describe("finding the round's aura", function()
 		assert.equals(0, ns.Seq.Count())
 		wow.applyAura("boss1", enc.SERMON, slot * 3)
 		for _, quadrant in ipairs({ "S", "W", "N" }) do
-			enc.standAt(ns, quadrant)
+			ns.Seq.Press(quadrant)
 			wow.advance(slot)
 		end
 		wow.removeAura("boss1", enc.SERMON)
 		assert.same({ "S", "W", "N" }, ns.Seq.Get())
 	end)
 
-	it("lists what it can see, so the real name can be checked in the field", function()
-		local ns = enc.ready("auto")
-		wow.applyAura("boss1", enc.SERMON, 15.015)
-		wow.applyAura("boss1", "Something Else", 8)
+	-- The boss carries more than one aura, and only one of them is the round.
+	it("picks the round's aura out from the others on the boss", function()
+		local ns = enc.ready()
+		enc.pull(ns, enc.NORMAL)
 
-		wow.slash("SNAKESAYS", "auras")
-		assert.is_true(wow.chatContains(enc.SERMON))
-		assert.is_true(wow.chatContains("Something Else"))
-		assert.is_true(wow.chatContains("this is the one"))
-		assert.is_not_nil(ns.Detector.ScanAuras)
+		wow.applyAura("boss1", "Something Else", 8)
+		wow.applyAura("boss1", enc.SERMON, enc.SLOT[enc.NORMAL] * 3)
+		wow.advance(0.3)
+
+		local grid = ns.Detector.ActiveGrid()
+		assert.is_not_nil(grid)
+		assert.equals(3, grid.waves)          -- read off the Sermon, not the decoy
 	end)
 end)
 
-describe("reading a round", function()
-	it("records one quarter per wave, in order", function()
-		local ns = enc.ready("auto")
+-- The board is the player's. What the round is for is the wave count and the
+-- slot length -- the timing the player cannot work out while playing.
+describe("a round the player fills in by hand", function()
+	it("keeps what was pressed, in order", function()
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 		enc.showRound(ns, HARD_PATH, { difficulty = enc.HARD })
 		assert.same(HARD_PATH, ns.Seq.Get())
 	end)
 
-	it("takes the wave count from the aura's length, not from a wave event", function()
-		local ns = enc.ready("auto")
+	it("works out how many waves are coming from the aura's length alone", function()
+		local ns = enc.ready()
 		enc.pull(ns, enc.NORMAL)
-		enc.showRound(ns, NORMAL_PATH, { difficulty = enc.NORMAL })
-		assert.equals(3, ns.Seq.Count())
+
+		wow.applyAura("boss1", enc.SERMON, enc.SLOT[enc.NORMAL] * 3)
+		wow.advance(0.3)
+
+		local grid = ns.Detector.ActiveGrid()
+		assert.is_not_nil(grid)
+		assert.equals(3, grid.waves)          -- known before a single wave landed
+		assert.equals(0, ns.Seq.Count())      -- and without anything on the board
 	end)
 
-	it("fills the board as the round runs rather than all at once", function()
-		local ns = enc.ready("auto")
+	it("knows the wave count while the board is still empty", function()
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
+		enc.showRound(ns, { "N", "E", "S", "W", "N" },
+			{ difficulty = enc.HARD, silent = true })
 
-		local slot = enc.SLOT[enc.HARD]
-		wow.applyAura("boss1", enc.SERMON, slot * 3)
-
-		-- Watch the board through the round rather than only at the end of it.
-		local seen, held = {}, {}
-		for _, quadrant in ipairs({ "N", "E", "S" }) do
-			enc.standAt(ns, quadrant)
-			for _ = 1, 6 do
-				wow.advance(slot / 6)
-				local count = ns.Seq.Count()
-				if not held[count] then
-					held[count] = true
-					seen[#seen + 1] = count
-				end
-			end
-		end
-		wow.removeAura("boss1", enc.SERMON)
-
-		-- It grew a wave at a time and was never seen jumping from nothing to
-		-- everything at the close.
-		assert.same({ 0, 1, 2 }, seen)
-		assert.equals(3, ns.Seq.Count())
-	end)
-
-	it("takes where the player settled, not where they passed through", function()
-		local ns = enc.ready("auto")
-		enc.pull(ns, enc.HARD)
-
-		-- Set off from somewhere real, and cross into the answer only at the very
-		-- end of each slot. An even weighting would call every one of these wrong.
-		enc.standAt(ns, "S")
-		enc.showRound(ns, { "N", "E", "S" }, { difficulty = enc.HARD, arriveAt = 0.7 })
-		assert.same({ "N", "E", "S" }, ns.Seq.Get())
-	end)
-
-	it("will not call a slot the player spent the end of standing on the centre", function()
-		local ns = enc.ready("auto")
-		enc.pull(ns, enc.HARD)
-
-		local slot = enc.SLOT[enc.HARD]
-		wow.applyAura("boss1", enc.SERMON, slot * 2)
-		enc.standAt(ns, "N"); wow.advance(slot)
-		enc.standAt(ns, "E"); wow.advance(slot * 0.4)
-		enc.standAt(ns, nil)                        -- back on top of the boss
-		wow.advance(slot * 0.6)
-		wow.removeAura("boss1", enc.SERMON)
-
+		-- The player pressed nothing at all. The timing was still read.
 		assert.equals(0, ns.Seq.Count())
+		assert.is_true(ns.IsSlotLearned("hard") or ns.SlotLength("hard") > 0)
 	end)
 
 	it("starts each round from an empty board", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 
 		enc.round(ns, { "N", "E", "S", "W", "N" }, { difficulty = enc.HARD })
@@ -605,7 +574,7 @@ describe("reading a round", function()
 	end)
 
 	it("grows with the boss across three rounds in one pull", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.NORMAL)
 
 		local rounds = {
@@ -622,37 +591,33 @@ describe("reading a round", function()
 		assert.same({ 3, 4, 5 }, counts)
 		assert.same(rounds[3], ns.Seq.Get())
 	end)
-
-	it("says so when two waves in a row read as the same quarter", function()
-		local ns = enc.ready("auto")
-		enc.pull(ns, enc.HARD)
-		enc.showRound(ns, { "N", "N", "E" }, { difficulty = enc.HARD })
-		assert.is_true(wow.chatContains("never repeats"))
-	end)
-
-	it("keeps the run when that happens, rather than binning the good waves", function()
-		local ns = enc.ready("auto")
-		enc.pull(ns, enc.HARD)
-		enc.showRound(ns, { "N", "N", "E" }, { difficulty = enc.HARD })
-		assert.same({ "N", "N", "E" }, ns.Seq.Get())
-	end)
 end)
 
 describe("a round that is cut short", function()
-	it("is discarded when a wipe truncates the aura", function()
-		local ns = enc.ready("auto")
+	it("says so when a wipe truncates the aura", function()
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 
 		-- Three whole slots in, then the raid dies and the aura goes with them.
 		enc.showRoundCutShort(ns, HARD_PATH, enc.SLOT[enc.HARD] * 3.4, { difficulty = enc.HARD })
-		enc.wipe(ns)
 
-		assert.equals(0, ns.Seq.Count())
 		assert.is_true(wow.chatContains("cut short"))
 	end)
 
+	-- The presses are the player's own work. A round the boss cut short says
+	-- nothing about whether they typed it correctly, so binning it would be the
+	-- addon throwing away something it did not put there.
+	it("leaves the board alone, because the board is not ours to discard", function()
+		local ns = enc.ready()
+		enc.pull(ns, enc.HARD)
+		enc.showRoundCutShort(ns, { "N", "E", "S" }, enc.SLOT[enc.HARD] * 2.4,
+			{ difficulty = enc.HARD })
+
+		assert.same({ "N", "E" }, ns.Seq.Get())
+	end)
+
 	it("leaves nothing behind for the next pull", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 		enc.showRoundCutShort(ns, HARD_PATH, enc.SLOT[enc.HARD] * 2.5, { difficulty = enc.HARD })
 		enc.wipe(ns)
@@ -662,14 +627,14 @@ describe("a round that is cut short", function()
 		assert.same({ "S", "W", "N" }, ns.Seq.Get())
 	end)
 
-	it("is discarded when the encounter ends before the aura does", function()
-		local ns = enc.ready("auto")
+	it("is over when the encounter ends before the aura does", function()
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 
 		local slot = enc.SLOT[enc.HARD]
 		wow.applyAura("boss1", enc.SERMON, slot * 5)
-		enc.standAt(ns, "N"); wow.advance(slot)
-		enc.standAt(ns, "E"); wow.advance(slot)
+		ns.Seq.Press("N"); wow.advance(slot)
+		ns.Seq.Press("E"); wow.advance(slot)
 
 		enc.wipe(ns)                                -- ENCOUNTER_END lands first
 		wow.removeAura("boss1", enc.SERMON)         -- the aura follows a tick later
@@ -678,74 +643,27 @@ describe("a round that is cut short", function()
 		assert.is_false(ns.Detector.IsArmed())
 	end)
 
-	it("calls nothing back, because there is nothing to call", function()
-		local ns = enc.ready("auto")
+	it("calls nothing back, because the round never proved its wave count", function()
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
-		enc.showRoundCutShort(ns, HARD_PATH, enc.SLOT[enc.HARD] * 3.4, { difficulty = enc.HARD })
+		enc.showRoundCutShort(ns, HARD_PATH, enc.SLOT[enc.HARD] * 3.4,
+			{ difficulty = enc.HARD, silent = true })
 		enc.callRound(ns, 5)
 		assert.equals(0, #wow.spoken)
 		assert.is_false(ns.Detector.IsReplaying())
 	end)
 end)
 
-describe("a wave that cannot be read", function()
-	it("takes the whole round with it", function()
-		local ns = enc.ready("auto")
-		enc.pull(ns, enc.HARD)
-
-		local slot = enc.SLOT[enc.HARD]
-		wow.applyAura("boss1", enc.SERMON, slot * 3)
-
-		enc.standAt(ns, "N"); wow.advance(slot)
-		enc.standAt(ns, "E"); wow.advance(slot * 0.6)
-		wow.setPosition(nil)                       -- the client stops answering
-		wow.advance(slot * 1.4)
-		wow.removeAura("boss1", enc.SERMON)
-
-		assert.equals(0, ns.Seq.Count())
-	end)
-
-	it("says which wave it lost", function()
-		local ns = enc.ready("auto")
-		enc.pull(ns, enc.HARD)
-
-		local slot = enc.SLOT[enc.HARD]
-		wow.applyAura("boss1", enc.SERMON, slot * 3)
-		enc.standAt(ns, "N"); wow.advance(slot)
-		enc.standAt(ns, "E"); wow.advance(slot)
-		wow.setPosition(nil)
-		wow.advance(slot)
-		wow.removeAura("boss1", enc.SERMON)
-
-		assert.is_true(wow.chatContains("Wave 3 could not be read"))
-	end)
-
-	it("is what a player standing on the centre point the whole slot gets", function()
-		local ns = enc.ready("auto")
-		enc.pull(ns, enc.HARD)
-
-		local slot = enc.SLOT[enc.HARD]
-		wow.applyAura("boss1", enc.SERMON, slot * 2)
-		enc.standAt(ns, "N"); wow.advance(slot)
-		enc.standAt(ns, nil)                       -- right on top of the boss
-		wow.advance(slot)
-		wow.removeAura("boss1", enc.SERMON)
-
-		assert.equals(0, ns.Seq.Count())
-		assert.is_true(wow.chatContains("Wave 2 could not be read"))
-	end)
-end)
-
 describe("calling the run back", function()
 	it("announces one wave per cast, in the recorded order", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 		enc.round(ns, { "W", "N", "S" }, { difficulty = enc.HARD })
 		assert.same({ "Red", "Orange", "Blue" }, wow.spokenText())
 	end)
 
 	it("announces at the start of the cast, not when the wave lands", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 		enc.showRound(ns, { "W", "N", "S" }, { difficulty = enc.HARD })
 
@@ -755,7 +673,7 @@ describe("calling the run back", function()
 	end)
 
 	it("gives the player the live cast time to move, not an assumed one", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 		enc.showRound(ns, { "W", "N" }, { difficulty = enc.HARD })
 
@@ -768,7 +686,7 @@ describe("calling the run back", function()
 	end)
 
 	it("ignores casts from the second boss", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 		enc.showRound(ns, { "W", "N", "S" }, { difficulty = enc.HARD })
 
@@ -778,7 +696,7 @@ describe("calling the run back", function()
 	end)
 
 	it("counts one cast once however many unit tokens it arrives on", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 		enc.showRound(ns, { "W", "N", "S" }, { difficulty = enc.HARD })
 
@@ -787,7 +705,7 @@ describe("calling the run back", function()
 	end)
 
 	it("stops at the end of the run and ignores extra casts", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 		enc.showRound(ns, { "W", "N", "S" }, { difficulty = enc.HARD })
 
@@ -796,7 +714,7 @@ describe("calling the run back", function()
 	end)
 
 	it("says which quarter is next while there is one", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 		enc.showRound(ns, { "W", "N", "S" }, { difficulty = enc.HARD })
 
@@ -805,27 +723,8 @@ describe("calling the run back", function()
 		assert.is_true(ns.Announce.PopupSubtitle():find("Orange", 1, true) ~= nil)
 	end)
 
-	-- The bell has been waiting on a quadrant reading to exist at all.
-	it("rings once the player actually reaches the called quarter", function()
-		local ns = enc.ready("auto")
-		enc.pull(ns, enc.HARD)
-		enc.showRound(ns, { "W", "N" }, { difficulty = enc.HARD })
-
-		enc.standAt(ns, "S")                        -- nowhere near the call
-		wow.startCast("boss1", enc.ECHO, 3.31)
-		wow.advance(1)
-		assert.equals(0, #wow.sounds)
-
-		enc.standAt(ns, "W")
-		wow.advance(0.3)
-		assert.equals(1, #wow.sounds)
-
-		wow.advance(1)                              -- and does not ring again
-		assert.equals(1, #wow.sounds)
-	end)
-
 	it("closes the replay once the last wave has landed", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 		enc.showRound(ns, { "W", "N" }, { difficulty = enc.HARD })
 
@@ -848,7 +747,7 @@ describe("a cast the client will not fully describe", function()
 	local RUN = { "W", "N", "S" }
 
 	it("never touches the spell id of a cast that is not the boss'", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 
 		-- In an instance this is nearly every cast that happens.
@@ -861,7 +760,7 @@ describe("a cast the client will not fully describe", function()
 	end)
 
 	it("calls the run back when the spell id is secret", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 		enc.showRound(ns, RUN, { difficulty = enc.HARD })
 
@@ -873,7 +772,7 @@ describe("a cast the client will not fully describe", function()
 	end)
 
 	it("calls it back when neither the id nor the name can be read", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 		enc.showRound(ns, RUN, { difficulty = enc.HARD })
 
@@ -887,17 +786,17 @@ describe("a cast the client will not fully describe", function()
 	-- wave". It must not reach back into the showing half, where a stray cast
 	-- would shift the whole run onto the wrong quarters.
 	it("does not treat an unreadable cast during the showing half as a wave", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 
 		local slot = enc.SLOT[enc.HARD]
 		wow.applyAura("boss1", enc.SERMON, slot * 3)
-		enc.standAt(ns, "N"); wow.advance(slot)
+		ns.Seq.Press("N"); wow.advance(slot)
 		wow.startCast("boss1", 999, 2, { secret = true, nameless = true })
 		assert.equals(0, ns.Detector.EchoIndex())
 
-		enc.standAt(ns, "E"); wow.advance(slot)
-		enc.standAt(ns, "S"); wow.advance(slot)
+		ns.Seq.Press("E"); wow.advance(slot)
+		ns.Seq.Press("S"); wow.advance(slot)
 		wow.removeAura("boss1", enc.SERMON)
 
 		assert.same({ "N", "E", "S" }, ns.Seq.Get())
@@ -907,13 +806,13 @@ describe("a cast the client will not fully describe", function()
 	-- run. A second boss frame casting is a different thing, and refusing it
 	-- would cost the calls outright if the round's channel outlasts them.
 	it("never takes the round-carrier's own unreadable cast for a wave", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		ns.SetDebug(true)
 		enc.pull(ns, enc.HARD)
 
 		wow.startChannel("boss1", enc.SERMON_SPELL, 15.015)
 		wow.advance(0.3)
-		assert.is_true(ns.Detector.IsRecording())
+		assert.is_true(ns.Detector.IsShowingRound())
 
 		-- boss1 is carrying the round. Taking its own stray cast for a wave would
 		-- shift the entire run onto the wrong quarters.
@@ -923,7 +822,7 @@ describe("a cast the client will not fully describe", function()
 	end)
 
 	it("still turns down a named cast that is not the wave", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 		enc.showRound(ns, RUN, { difficulty = enc.HARD })
 
@@ -936,7 +835,7 @@ end)
 
 describe("learning the slot length", function()
 	it("corrects itself when more waves are called than the length implied", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 
 		-- A round whose real slot is 2.6s: 7 waves in 18.2s. The seeded 3.003
@@ -952,7 +851,7 @@ describe("learning the slot length", function()
 	end)
 
 	it("corrects itself when fewer waves are called, once the round is provably over", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 
 		-- 15.015s reads as exactly 5 slots on the seed, but the boss calls four.
@@ -972,7 +871,7 @@ describe("learning the slot length", function()
 	-- reading it as a measurement would poison the next pull as a matter of
 	-- routine.
 	it("learns nothing from a pull that died part way through the calling half", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 
 		enc.showRound(ns, HARD_PATH, { difficulty = enc.HARD })   -- 15.015s, 5 waves, right
@@ -985,7 +884,7 @@ describe("learning the slot length", function()
 	end)
 
 	it("reads the next pull the same way it would have before the wipe", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 		enc.showRound(ns, HARD_PATH, { difficulty = enc.HARD })
 		enc.callRound(ns, 2)
@@ -999,7 +898,7 @@ describe("learning the slot length", function()
 	-- The other direction survives a wipe, because it is proof rather than an
 	-- inference: the boss cast once per wave, so a seventh call happened.
 	it("still learns from more calls than expected on a pull that died", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 
 		enc.showRound(ns, { "N", "E", "S", "W", "N", "E" }, { length = 18.2 })
@@ -1010,7 +909,7 @@ describe("learning the slot length", function()
 	end)
 
 	it("leaves the slot alone when the cast count agrees", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 		enc.round(ns, HARD_PATH, { difficulty = enc.HARD })
 		enc.kill(ns)
@@ -1020,7 +919,7 @@ describe("learning the slot length", function()
 	end)
 
 	it("uses the correction on the very next round", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 
 		enc.showRound(ns, { "N", "E", "S", "W", "N", "E" }, { length = 18.2 })
@@ -1033,7 +932,7 @@ describe("learning the slot length", function()
 	end)
 
 	it("keeps the correction between sessions", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.HARD)
 		enc.showRound(ns, { "N", "E", "S", "W", "N", "E" }, { length = 18.2 })
 		enc.callRound(ns, 7)
@@ -1048,7 +947,7 @@ describe("learning the slot length", function()
 	-- a whole number of. Nothing could recover, because a discarded round teaches
 	-- nothing.
 	it("refuses a correction that is nowhere near the measured seed", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.NORMAL)
 
 		-- Four waves, one call: exactly the shape that produced 13.990.
@@ -1061,7 +960,7 @@ describe("learning the slot length", function()
 	end)
 
 	it("ignores a stored slot that is already far past believing", function()
-		local ns = enc.ready("auto", { slotLength = { normal = 13.990 } })
+		local ns = enc.ready({ slotLength = { normal = 13.990 } })
 		enc.pull(ns, enc.NORMAL)
 
 		enc.showRound(ns, { "N", "E", "S" }, { length = 10.509, difficulty = enc.NORMAL })
@@ -1073,7 +972,7 @@ describe("learning the slot length", function()
 	it("drops a believable stored slot that cannot explain a round", function()
 		-- 4.5s is close enough to normal's 3.503 to have been a real correction,
 		-- and it cannot make a whole number out of a 10.509s round.
-		local ns = enc.ready("auto", { slotLength = { normal = 4.5 } })
+		local ns = enc.ready({ slotLength = { normal = 4.5 } })
 		enc.pull(ns, enc.NORMAL)
 
 		enc.showRound(ns, { "N", "E", "S" }, { length = 10.509, difficulty = enc.NORMAL })
@@ -1084,7 +983,7 @@ describe("learning the slot length", function()
 	end)
 
 	it("keeps normal and hard apart", function()
-		local ns = enc.ready("auto")
+		local ns = enc.ready()
 		enc.pull(ns, enc.NORMAL)
 		enc.showRound(ns, { "N", "E", "S", "W" }, { length = 14.012 })
 		enc.callRound(ns, 5)
@@ -1095,238 +994,22 @@ describe("learning the slot length", function()
 	end)
 end)
 
-describe("every mode", function()
-	local RUN = { "W", "N", "S" }
-
-	it("records by itself in automatic", function()
-		local ns = enc.ready("auto")
-		enc.pull(ns, enc.HARD)
-		enc.showRound(ns, RUN, { difficulty = enc.HARD })
-		assert.same(RUN, ns.Seq.Get())
-
-		enc.callRound(ns, 3)
-		assert.same({ "Red", "Orange", "Blue" }, wow.spokenText())
-	end)
-
-	it("records nothing by itself in semi-automatic", function()
-		local ns = enc.ready("semi")
-		enc.pull(ns, enc.HARD)
-		enc.showRound(ns, RUN, { difficulty = enc.HARD })
-		assert.equals(0, ns.Seq.Count())
-	end)
-
-	it("reads the quarter off the capture key in semi-automatic", function()
-		local ns = enc.ready("semi")
-		enc.pull(ns, enc.HARD)
-
-		local slot = enc.SLOT[enc.HARD]
-		wow.applyAura("boss1", enc.SERMON, slot * 3)
-		for _, quadrant in ipairs(RUN) do
-			enc.standAt(ns, quadrant)
-			wow.advance(slot * 0.9)
-			_G.SnakeSays_Capture()
-			wow.advance(slot * 0.1)
-		end
-		wow.removeAura("boss1", enc.SERMON)
-
-		assert.same(RUN, ns.Seq.Get())
-
-		enc.callRound(ns, 3)
-		assert.same({ "Red", "Orange", "Blue" }, wow.spokenText())
-	end)
-
-	it("calls back a run the player pressed in by hand in manual", function()
-		local ns = enc.ready("manual")
-		enc.pull(ns, enc.HARD)
-
-		local slot = enc.SLOT[enc.HARD]
-		wow.applyAura("boss1", enc.SERMON, slot * 3)
-		for _, quadrant in ipairs(RUN) do
-			_G.SnakeSays_Press(quadrant)
-			wow.advance(slot)
-		end
-		wow.removeAura("boss1", enc.SERMON)
-
-		assert.same(RUN, ns.Seq.Get())
-
-		enc.callRound(ns, 3)
-		assert.same({ "Red", "Orange", "Blue" }, wow.spokenText())
-	end)
-
-	it("refuses the capture key in automatic, where it would corrupt the run", function()
-		local ns = enc.ready("auto")
-		enc.pull(ns, enc.HARD)
-		enc.standAt(ns, "E")
-		assert.is_false(ns.Detector.Capture())
-		assert.equals(0, ns.Seq.Count())
-	end)
-
-	it("refuses to capture a quarter it cannot read", function()
-		local ns = enc.ready("semi")
-		enc.pull(ns, enc.HARD)
-		enc.standAt(ns, nil)                        -- on the centre point
-		assert.is_false(ns.Detector.Capture())
-		assert.is_true(wow.chatContains("too close to the centre"))
-	end)
-end)
-
-describe("giving up honestly", function()
-	it("drops to manual when the client stops handing out position", function()
-		local ns = enc.ready("auto")
-		wow.setPosition(nil)
-		wow.fire("ZONE_CHANGED_NEW_AREA")
-
-		assert.equals("manual", ns.GetMode())
-		assert.is_false(ns.GetBlockManualInput())
-		assert.is_true(wow.chatContains("no longer read your position"))
-	end)
-
-	it("says it once and only once", function()
-		local ns = enc.ready("auto")
-		wow.setPosition(nil)
-		wow.fire("ZONE_CHANGED_NEW_AREA")
-		wow.fire("ZONE_CHANGED_NEW_AREA")
-		enc.pull(ns, enc.HARD)
-		wow.fire("PLAYER_ENTERING_WORLD")
-
-		local said = 0
-		for _, line in ipairs(wow.chat) do
-			if line:find("no longer read your position", 1, true) then said = said + 1 end
-		end
-		assert.equals(1, said)
-	end)
-
-	it("stays put out in the world, where position is nobody's business", function()
-		local ns = enc.ready("auto")
-		wow.instanceMapID = 0
-		wow.zoneText = "Valdrakken"
-		wow.setPosition(nil)
-		wow.fire("ZONE_CHANGED_NEW_AREA")
-		assert.equals("auto", ns.GetMode())
-	end)
-
-	it("asks for a measurement rather than guessing at a centre", function()
-		local ns = enc.setup("auto")           -- booted, never measured
-		enc.pull(ns, enc.HARD)
-		assert.is_true(wow.chatContains("/ss measure"))
-
-		enc.showRound(ns, HARD_PATH, { difficulty = enc.HARD })
-		assert.equals(0, ns.Seq.Count())
-	end)
-end)
-
-describe("position", function()
-	it("has no answer at all until the room has been measured", function()
-		local ns = enc.setup("auto")
-		enc.standAt(ns, "N")
-		assert.is_nil(ns.Position.Quadrant())
-		assert.is_nil(ns.Position.Distance())
-		assert.is_nil(ns.Position.Offset())
-	end)
-
-	it("names each quarter once there is a centre", function()
-		local ns = enc.ready("auto")
-		for _, quadrant in ipairs(ns.QUADRANTS) do
-			enc.standAt(ns, quadrant)
-			assert.equals(quadrant, ns.Position.Quadrant())
-		end
-	end)
-
-	it("puts the boundaries on the diagonals", function()
-		local ns = enc.ready("auto")
-		local center = ns.GetRoomCenter()
-
-		-- A yard either side of the north-west diagonal, ten yards out.
-		wow.setPosition(center.a + 10, center.b + 9, 0, ns.ROOM.instanceMapID)
-		assert.equals("N", ns.Position.Quadrant())
-		wow.setPosition(center.a + 9, center.b + 10, 0, ns.ROOM.instanceMapID)
-		assert.equals("W", ns.Position.Quadrant())
-	end)
-
-	it("works just as well at melee range as out by the wall", function()
-		local ns = enc.ready("auto")
-		local center = ns.GetRoomCenter()
-		for _, radius in ipairs({ 1.5, 5, 11, 38 }) do
-			wow.setPosition(center.a - radius, center.b, 0, ns.ROOM.instanceMapID)
-			assert.equals("S", ns.Position.Quadrant())
-		end
-	end)
-
-	it("has no bearing for a player standing on the centre point", function()
-		local ns = enc.ready("auto")
-		local center = ns.GetRoomCenter()
-		wow.setPosition(center.a + 0.4, center.b + 0.4, 0, ns.ROOM.instanceMapID)
-		assert.is_nil(ns.Position.Quadrant())
-		assert.is_near(0.566, ns.Position.Distance(), 0.01)   -- distance still known
-	end)
-
-	it("measures the distance from the centre", function()
-		local ns = enc.ready("auto")
-		enc.standAt(ns, "E")
-		assert.is_near(8, ns.Position.Distance(), 0.001)
-	end)
-
-	it("says it does not know when the client withholds position", function()
-		local ns = enc.ready("auto")
-		wow.setPosition(nil)
-		assert.is_nil(ns.Position.Quadrant())
-		assert.is_nil(ns.Position.Distance())
-		assert.is_false(ns.Position.IsAvailable())
-	end)
-
-	it("says it does not know when the client hands back a secret", function()
-		local ns = enc.ready("auto")
-		wow.setPosition(200, 20, 0, ns.ROOM.instanceMapID, true)
-		assert.has_no.errors(function()
-			assert.is_nil(ns.Position.Quadrant())
-			assert.is_nil(ns.Position.Distance())
-			assert.is_nil(ns.Position.Offset())
-		end)
-		assert.is_false(ns.Position.IsAvailable())
-	end)
-
-	it("reads facing, and declines a secret one", function()
-		local ns = enc.ready("auto")
-		wow.setFacing(1.25)
-		assert.is_near(1.25, ns.Position.Facing(), 0.0001)
-
-		wow.setFacing(1.25, true)
-		assert.has_no.errors(function() assert.is_nil(ns.Position.Facing()) end)
-	end)
-
-	it("never lets a secret escape into a combat event handler", function()
-		local ns = enc.ready("auto")
-		enc.pull(ns, enc.HARD)
-		wow.setPosition(200, 20, 0, ns.ROOM.instanceMapID, true)
-		wow.setFacing(0.5, true)
-
-		-- A whole round with the client handing back landmines the entire way.
-		assert.has_no.errors(function()
-			wow.applyAura("boss1", enc.SERMON, enc.SLOT[enc.HARD] * 5)
-			wow.advance(enc.SLOT[enc.HARD] * 5)
-			wow.removeAura("boss1", enc.SERMON)
-			enc.callRound(ns, 5)
-		end)
-		assert.equals(0, ns.Seq.Count())
-	end)
-end)
-
 describe("the delve check", function()
 	it("knows the delve by its instance id", function()
-		local ns = enc.setup("auto")
+		local ns = enc.setup()
 		wow.zoneText = "Somewhere Else"
 		assert.is_true(ns.InDelve())
 	end)
 
 	it("knows it by name when the instance id has moved", function()
-		local ns = enc.setup("auto")
+		local ns = enc.setup()
 		wow.instanceMapID = 4321
 		wow.zoneText = "Venomfall Deeps"
 		assert.is_true(ns.InDelve())
 	end)
 
 	it("says no everywhere else", function()
-		local ns = enc.setup("auto")
+		local ns = enc.setup()
 		wow.instanceMapID = 0
 		wow.zoneText = "Valdrakken"
 		assert.is_false(ns.InDelve())
