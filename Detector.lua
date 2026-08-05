@@ -119,6 +119,20 @@ local WAVES_BY_ROUND = {
 	hard   = { 5, 6, 7 },
 }
 
+-- The longest round anyone can be shown, read off the table above rather than
+-- written down twice. The board and the timeline size themselves to this, so if
+-- the fight ever grows an eighth wave, correcting WAVES_BY_ROUND is enough and
+-- the windows follow.
+function Detector.MaxWaves()
+	local most = 0
+	for _, byRound in pairs(WAVES_BY_ROUND) do
+		for _, waves in ipairs(byRound) do
+			if waves > most then most = waves end
+		end
+	end
+	return most
+end
+
 -- How far a round's length may sit from a whole number of slots and still count
 -- as a whole round. A wipe cuts the aura mid-slot; this is what catches it.
 local SLOT_TOLERANCE = 0.20   -- in slots
@@ -226,6 +240,7 @@ local endTimer              -- closes the replay when the last wave lands
 
 local replaying  = false
 local echoIndex  = 0
+local declaredWaves         -- wave count published by a caller staging its own run
 
 -- Defined down in the events section; armed from up here, so it needs a name
 -- before it has a body.
@@ -307,6 +322,31 @@ function Detector.EchoIndex() return echoIndex end
 -- and switches part way through a round, so anything with a number baked into it
 -- is wrong by the last call.
 function Detector.CastEndsAt() return castEndsAt end
+
+-- Say when the wave being called now will land, for a caller stepping the replay
+-- itself instead of off the boss' casts. The practice run is the only one, and
+-- without this it has no span to hand the timeline: the scanning bar would have
+-- nothing to travel over during the very drill meant to show it off.
+function Detector.SetCastEnd(at)
+	castEndsAt = at
+end
+
+-- How many waves the round in progress will have, when that is known before they
+-- arrive. The timeline draws the ones not pressed yet as empty slots, so a player
+-- can see they are a press short while the round is still running rather than
+-- finding out when the calls start.
+--
+-- A real round answers from its own aura (ActiveGrid). `declaredWaves` is for a
+-- caller staging a run of its own, which no boss ever does.
+function Detector.ExpectedWaves()
+	local grid = Detector.ActiveGrid()
+	if grid then return grid.waves end
+	return declaredWaves
+end
+
+function Detector.SetExpectedWaves(n)
+	declaredWaves = tonumber(n)
+end
 
 -- ---------------------------------------------------------------------------
 -- Slot length, and learning it
@@ -778,6 +818,7 @@ local function arm(id, name)
 	showing, lastRound = nil, nil
 	calls, seenCasts, lastCallAt, unreadableCalls = 0, {}, nil, 0
 	roundIndex = 0
+	declaredWaves = nil
 	Detector.EndReplay()
 
 	-- A pull starts with an empty board. Whatever is on it came from somewhere
@@ -1109,6 +1150,7 @@ function Detector.Reset()
 	showing, lastRound = nil, nil
 	calls, seenCasts, lastCallAt, unreadableCalls = 0, {}, nil, 0
 	roundIndex = 0
+	declaredWaves = nil
 	ns.Seq.Reset()
 end
 

@@ -12,12 +12,14 @@
 
 # Load order: shared state -> the board -> the encounter machine, then
 # everything that reacts to it -> UI -> commands.
-# Announce registers listeners on Detector at load, so it must come after it.
+# Announce and Timeline register listeners on Detector at load, so they must
+# come after it.
 Core.lua
 Sequence.lua
 Detector.lua
 Announce.lua
 Sim.lua
 HUD.lua
+Timeline.lua
 Options.lua
 Commands.lua

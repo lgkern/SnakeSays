@@ -42,6 +42,7 @@ local function tearDown()
 	running = false
 	cancelTimers()
 	ns.SetVisibilityOverride(false)
+	ns.Detector.SetExpectedWaves(nil)
 end
 
 function Sim.IsRunning() return running end
@@ -80,9 +81,15 @@ end
 
 -- Queue one silent repeat per wave, then tidy up after the last call has had
 -- time to land.
+--
+-- Each call says when its wave lands before stepping, which during a real pull
+-- is read off the boss' cast. Nothing downstream can tell the difference, and
+-- the timeline's scanning bar has a span to travel -- without it the drill would
+-- show a bar that never moves, which is the one thing the drill is for.
 local function queueReplay(startAt, waves)
 	for wave = 1, waves do
 		at(startAt + ECHO_GAP * (wave - 1), function()
+			ns.Detector.SetCastEnd(GetTime() + ECHO_GAP)
 			ns.Detector.Advance()
 		end)
 	end
@@ -132,6 +139,11 @@ function Sim.StartDemo(waves, forcedRun)
 
 	local run = forcedRun or makeRun(waves)
 	Sim.lastRun = run
+
+	-- Declare the length up front, the way a real round's aura does, so the
+	-- timeline lays out its rests and the practice run rehearses the whole thing
+	-- rather than a staff that grows a slot at a time.
+	ns.Detector.SetExpectedWaves(#run)
 
 	ns.Print(("practice run: |cffffd200%d waves|r. Watch them go onto the board, "):format(#run)
 		.. "then follow the calls.")

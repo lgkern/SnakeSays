@@ -37,7 +37,7 @@ local iconButtons = {}    -- dir -> { markerId -> button }
 local keybindButtons = {} -- command -> button
 local styleButtons = {}   -- announce style key -> radio button
 local showCB, lockCB, autoResetCB, timerSlider, timerValue, restrictCB
-local ttsCB, overlapCB, popupCB, subtitleCB
+local ttsCB, overlapCB, popupCB, subtitleCB, timelineCB
 local volumeSlider, volumeValue
 local scaleSliders = {}   -- the three window-size sliders, refreshed together
 local capture             -- fullscreen key-capture overlay (created on demand)
@@ -313,16 +313,27 @@ local function buildAnnounceColumn()
 	subtitleCB = buildCheckbox("Include the next-up line", -260,
 		ns.GetPopupSubtitle, ns.SetPopupSubtitle, ANNOUNCE_X + 24)
 
+	timelineCB = buildCheckbox("Show the timeline", -286,
+		ns.GetTimelineEnabled, ns.SetTimelineEnabled, ANNOUNCE_X)
+
+	local timelineHint = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+	timelineHint:SetPoint("TOPLEFT", panel, "TOPLEFT", ANNOUNCE_X + 24, -308)
+	timelineHint:SetText("The run written left to right, with a bar that reaches each "
+		.. "marker as its wave lands.")
+	timelineHint:SetWidth(300)
+	timelineHint:SetJustifyH("LEFT")
+
 	local moveHint = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-	moveHint:SetPoint("TOPLEFT", panel, "TOPLEFT", ANNOUNCE_X + 24, -286)
-	moveHint:SetText("Unlock the HUD to drag the board and the call.")
+	moveHint:SetPoint("TOPLEFT", panel, "TOPLEFT", ANNOUNCE_X + 24, -344)
+	moveHint:SetText("Unlock the HUD to drag all three windows.")
 
 	local sizeHeading = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	sizeHeading:SetPoint("TOPLEFT", panel, "TOPLEFT", ANNOUNCE_X, -354)
+	sizeHeading:SetPoint("TOPLEFT", panel, "TOPLEFT", ANNOUNCE_X, -376)
 	sizeHeading:SetText("Window size")
 
-	buildScaleSlider("Board", ANNOUNCE_X + 28, -384, ns.GetHUDScale, ns.SetHUDScale)
-	buildScaleSlider("On-screen call", ANNOUNCE_X + 28, -422, ns.GetPopupScale, ns.SetPopupScale)
+	buildScaleSlider("Board", ANNOUNCE_X + 28, -406, ns.GetHUDScale, ns.SetHUDScale)
+	buildScaleSlider("On-screen call", ANNOUNCE_X + 28, -444, ns.GetPopupScale, ns.SetPopupScale)
+	buildScaleSlider("Timeline", ANNOUNCE_X + 28, -482, ns.GetTimelineScale, ns.SetTimelineScale)
 end
 
 -- ---------------------------------------------------------------------------
@@ -440,6 +451,7 @@ function Options.Refresh()
 	overlapCB:SetChecked(overlapCB.getter())
 	popupCB:SetChecked(popupCB.getter())
 	subtitleCB:SetChecked(subtitleCB.getter())
+	timelineCB:SetChecked(timelineCB.getter())
 
 	local volume = ns.GetTTSVolume()
 	volumeSlider:SetValue(volume)

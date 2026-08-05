@@ -16,13 +16,22 @@ ns.Seq = Seq
 -- waves, then 6, then 7 -- so the cap has to sit well clear of the longest one.
 local MAX = 20
 local list = {}          -- array of quadrant keys ("N"/"E"/"S"/"W")
-local listener           -- single change callback (the HUD)
+local listeners = {}     -- change callbacks, in registration order
 local autoTimer          -- pending auto-reset timer, if any
 
-function Seq.OnChange(fn) listener = fn end
+-- More than one thing draws the board now (the HUD row and the timeline), so a
+-- second subscriber has to be added rather than replace the first -- a single
+-- slot here silently unhooked whichever registered earlier.
+function Seq.OnChange(fn)
+	listeners[#listeners + 1] = fn
+end
 
+-- Wrapped, because a listener that throws must not stop the ones after it from
+-- being told, nor leave the press that triggered it half-applied.
 local function changed()
-	if listener then listener(list) end
+	for _, fn in ipairs(listeners) do
+		pcall(fn, list)
+	end
 end
 
 local function cancelAutoReset()

@@ -82,9 +82,17 @@ local DEFAULTS = {
 	popupSubtitle = true,     -- the "... next" line under the main call
 	popupPosition = nil,      -- nil => centre top
 
+	-- The timeline: the run written out left to right, scanned by a bar during
+	-- the replay. Its own window, because the board wants to sit small next to
+	-- the character where it is quick to click, and this wants to sit large
+	-- where it is quick to read.
+	timelineEnabled = true,
+	timelinePosition = nil,   -- nil => top centre
+
 	-- Window sizes, as frame-scale multipliers (1 = as shipped).
 	hudScale = 1,
 	popupScale = 1,
+	timelineScale = 1,
 }
 
 -- Lazy DB resolver (the SV-timing rule above). Safe to call any time after
@@ -138,9 +146,15 @@ function ns.SetShown(v)
 	if ns.HUD then ns.HUD.ApplyShown() end
 end
 
+-- One lock for every window the addon owns. "Unlock" is the player saying they
+-- want to arrange things, and it would be a poor joke to hand them only one of
+-- the three. The call itself is the on-screen call, which had an ApplyLock all
+-- along that nothing ever reached.
 function ns.SetLocked(v)
 	db().locked = not not v
 	if ns.HUD then ns.HUD.ApplyLock() end
+	if ns.Announce then ns.Announce.ApplyLock() end
+	if ns.Timeline then ns.Timeline.ApplyLock() end
 end
 
 function ns.GetAutoReset()
@@ -318,6 +332,23 @@ function ns.SetPopupScale(v)
 	if ns.Announce then ns.Announce.ApplyScale() end
 end
 
+function ns.GetTimelineScale() return ns.ClampScale(db().timelineScale or DEFAULTS.timelineScale) end
+function ns.SetTimelineScale(v)
+	db().timelineScale = ns.ClampScale(v)
+	if ns.Timeline then ns.Timeline.ApplyScale() end
+end
+
+function ns.GetTimelineEnabled()
+	local v = db().timelineEnabled
+	if v == nil then return DEFAULTS.timelineEnabled end
+	return v
+end
+
+function ns.SetTimelineEnabled(v)
+	db().timelineEnabled = not not v
+	if ns.Timeline then ns.Timeline.ApplyShown() end
+end
+
 function ns.GetPosition() return db().position end
 function ns.SavePosition(point, relPoint, x, y)
 	db().position = { point = point, relPoint = relPoint, x = x, y = y }
@@ -325,6 +356,47 @@ end
 function ns.ClearPosition()
 	db().position = nil
 	if ns.HUD then ns.HUD.ResetPosition() end
+end
+
+-- ---------------------------------------------------------------------------
+-- Dragging a window by a grab strip
+--
+-- Moving on mouse-down/up rather than OnDragStart/OnDragStop, with a watchdog
+-- that runs only while a move is in progress. With a thin strip plus
+-- SetClampedToScreen, dragging into a screen edge separates the cursor from the
+-- strip and the drag-stop is missed, leaving the window stuck to the cursor.
+-- Watching the button itself catches the release wherever on screen it happens.
+--
+-- `save` is handed the resulting anchor so each window can persist it its own
+-- way. Returns a stop function, for a caller that has to break off a move (a
+-- window being hidden mid-drag, say).
+-- ---------------------------------------------------------------------------
+
+function ns.AttachMover(frame, strip, save)
+	local moving = false
+
+	local function stop()
+		if not moving then return end
+		moving = false
+		strip:SetScript("OnUpdate", nil)
+		frame:StopMovingOrSizing()
+		local point, _, relPoint, x, y = frame:GetPoint(1)
+		save(point, relPoint, x, y)
+	end
+
+	strip:EnableMouse(true)
+	strip:SetScript("OnMouseDown", function(_, button)
+		if button ~= "LeftButton" or ns.IsLocked() then return end
+		moving = true
+		frame:StartMoving()
+		strip:SetScript("OnUpdate", function()
+			if not IsMouseButtonDown("LeftButton") then stop() end
+		end)
+	end)
+	strip:SetScript("OnMouseUp", stop)
+	strip:SetScript("OnHide", stop)
+
+	return stop
 end
 
 -- ---------------------------------------------------------------------------
@@ -345,13 +417,14 @@ boot:SetScript("OnEvent", function(_, _, name)
 	if d.restrictToMap == nil then d.restrictToMap = DEFAULTS.restrictToMap end
 	d.mapID = d.mapID or DEFAULTS.mapID
 
-	for _, key in ipairs({ "ttsEnabled", "ttsOverlap", "popupEnabled", "popupSubtitle" }) do
+	for _, key in ipairs({ "ttsEnabled", "ttsOverlap", "popupEnabled", "popupSubtitle",
+		"timelineEnabled" }) do
 		if d[key] == nil then d[key] = DEFAULTS[key] end
 	end
 	d.ttsVoice = d.ttsVoice or DEFAULTS.ttsVoice
 	d.ttsVolume = d.ttsVolume or DEFAULTS.ttsVolume
 	d.announceStyle = d.announceStyle or DEFAULTS.announceStyle
-	for _, key in ipairs({ "hudScale", "popupScale" }) do
+	for _, key in ipairs({ "hudScale", "popupScale", "timelineScale" }) do
 		d[key] = ns.ClampScale(d[key] or DEFAULTS[key])
 	end
 	d.markers = d.markers or {}

@@ -55,14 +55,50 @@ defaults are:
 The sequence renders as a row of marker icons beneath the circle, and a
 **reset** button sits at the left of that row. Wedges flash as each wave goes on.
 
+## The timeline
+
+A separate window, at the top of the screen by default. The board says *where*
+to go; the timeline says *when*.
+
+The run is written out left to right like a bar of music, one slot per wave:
+
+```
+   ┌──────────────────────────────────────────────┐
+   │  ●    ◆    ■    ✚    ○    ○    ○             │
+   │ ─┼────┼────┼────┼────┼────┼────┼──           │
+   │       ▲                                      │
+   │   scanning bar                               │
+   └──────────────────────────────────────────────┘
+```
+
+While the waves are being shown, each quadrant you press drops into the next
+slot. Waves the round is going to have but you haven't filled yet are drawn
+**hollow** — rests, in the sheet music this borrows from — so being a press short
+is visible while there's still time to fix it.
+
+During the silent repeat a **scanning bar** sweeps across, and it reaches each
+marker at the exact moment that wave lands. The distance still to travel is the
+time you have left to be standing in that quadrant.
+
+Each step is timed off the boss' actual cast and re-aimed as it starts, rather
+than run at one fixed tempo. On the harder difficulty the cast switches between
+two lengths part way through a round, so a bar with a tempo baked in would drift
+off the markers by the last wave.
+
+It appears when it has something to say — while a round is being shown, while
+there's a run on the board, and through the repeat — and gets out of the way
+otherwise. Unlocking also brings it up so you can place it.
+
 ## During the repeat
 
-When the boss starts repeating the run, SnakeSays calls each wave two ways:
+When the boss starts repeating the run, SnakeSays calls each wave three ways:
 
 - **Voice**: one word per wave, the safe colour (*"Red"*) or the marker's name
   (*"Cross"*), your choice. 
 - **On-screen call**: the current quadrant large, with the next one beneath it
   so you can start moving early. Drag it anywhere; unlock the HUD to grab it.
+- **Timeline**: the scanning bar above, which is the one that tells you how long
+  you have rather than just where to be.
 
 ## Practice run
 
@@ -73,9 +109,14 @@ to play, so you can check the calls against it. `/ss sim stop` ends it.
 It runs a 5-wave phase by default; `/ss sim 6` or `/ss sim 7` practises the
 longer ones. It exists to check the announcements and to place the windows.
 
-The board is normally hidden outside the delve, so a practice run brings it up
-for its duration and puts it away afterwards. It only lifts the *location*
-restriction: if you've hidden the board, it stays hidden.
+The practice run drives the timeline exactly as a real pull does — the rests are
+laid out up front, the slots fill as the run is revealed, and the bar sweeps on
+the same clock — so it's the way to see the timeline and place it without a boss
+in front of you.
+
+The windows are normally hidden outside the delve, so a practice run brings them
+up for its duration and puts them away afterwards. It only lifts the *location*
+restriction: anything you've switched off stays off.
 
 ## Something Broken?
 
@@ -93,17 +134,19 @@ working from, and how many TTS voices are installed.
 - **Keybinds** - one per quadrant, plus *Reset*. Click a key box and press the
   combo (Esc cancels, right-click clears). These are real game bindings, set from
   this page.
-- **Show HUD** / **Lock HUD** - unlock to drag the board and the call.
+- **Show HUD** / **Lock HUD** - one lock for every window. Unlock to drag the
+  board, the on-screen call and the timeline; lock again when they're placed.
 - **Auto-reset** - clears the sequence a set number of seconds after the *first*
   press (30–60s, default 40s). The timer is anchored to the first press and
   doesn't slide forward as you add to the sequence.
 - **Only show inside the Delve Nemesis map** - on by default. Untick it to place
   the windows out in the world.
 - **During the replay** - call things by colour or by marker, voice volume, 
-let calls overlap, on-screen call on/off, next-up line on/off.
-- **Window size** - one slider each for the board and the on-screen call, 50% to
-  200%. They're separate on purpose: the board is a click target and the call is
-  read head-on, so one size for both is usually wrong for one of them. Resizing
+let calls overlap, on-screen call on/off, next-up line on/off, timeline on/off.
+- **Window size** - one slider each for the board, the on-screen call and the
+  timeline, 50% to 200%. They're separate on purpose: the board is a click
+  target, the call is read head-on, and the timeline is read from the corner of
+  your eye, so one size for all three is usually wrong for two of them. Resizing
   also scales the window's offset from whatever it's anchored to, so it can shift
   a little as it grows - nudge it back, or `/ss recenter`.
 
@@ -119,7 +162,8 @@ let calls overlap, on-screen call on/off, next-up line on/off.
 | `/ss show` · `/ss hide` · `/ss toggle` | show / hide the HUD |
 | `/ss lock` · `/ss unlock` | lock / unlock for dragging |
 | `/ss reset` | clear the recorded sequence |
-| `/ss recenter` | move the HUD and on-screen call back to their default places |
+| `/ss timeline` | toggle the timeline (`on` / `off` to be explicit) |
+| `/ss recenter` | move every window back to its default place |
 
 (`/snakesays` is a long alias for `/ss`.)
 

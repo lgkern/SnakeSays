@@ -182,8 +182,11 @@ end
 local function build()
 	if frame then return end
 
+	-- Wide enough for the longest round the fight can show, asked of the detector
+	-- rather than written down: the wave counts live in one table, and the board
+	-- should follow them if they ever change.
 	local width  = math.max(CIRCLE + PAD * 2,
-		PAD * 2 + RESET_SIZE + SEQ_GAP + 7 * (SEQ_ICON + SEQ_GAP))
+		PAD * 2 + RESET_SIZE + SEQ_GAP + ns.Detector.MaxWaves() * (SEQ_ICON + SEQ_GAP))
 	local height = MOVER_H + 4 + CIRCLE + ROW_GAP + SEQ_ICON + PAD
 
 	frame = CreateFrame("Frame", "SnakeSaysHUD", UIParent)

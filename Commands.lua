@@ -77,7 +77,8 @@ local function help()
 	out("  /ss toggle     toggle the HUD")
 	out("  /ss lock | unlock")
 	out("  /ss reset      clear the recorded sequence")
-	out("  /ss recenter   move the HUD back to the centre")
+	out("  /ss timeline   toggle the timeline bar (`on` / `off` to be explicit)")
+	out("  /ss recenter   move every window back to its default place")
 	out("  /ss options    open options")
 end
 
@@ -91,6 +92,8 @@ local function statusCommand()
 
 	out(("  board: shown=%s visible=%s"):format(
 		yes(ns.IsShown()), yes(ns.HUD.IsVisible())))
+	out(("  timeline: on=%s visible=%s slots=%d"):format(
+		yes(ns.GetTimelineEnabled()), yes(ns.Timeline.IsVisible()), ns.Timeline.SlotCount()))
 	out("  only inside the delve map: " .. yes(ns.GetRestrictToMap()))
 
 	out(("  encounter: armed=%s round showing=%s replaying=%s step=%d of %d"):format(
@@ -138,9 +141,16 @@ local handlers = {
 	lock        = function() ns.SetLocked(true);  out("HUD locked.") end,
 	unlock      = function() ns.SetLocked(false); out("HUD unlocked — drag it by the title bar.") end,
 	reset       = function() ns.Seq.Reset() end,
+	timeline    = function(arg)
+		if arg == "on" then ns.SetTimelineEnabled(true)
+		elseif arg == "off" then ns.SetTimelineEnabled(false)
+		else ns.SetTimelineEnabled(not ns.GetTimelineEnabled()) end
+		out("timeline: " .. (ns.GetTimelineEnabled() and "|cff44ff44on|r" or "off"))
+	end,
 	recenter    = function()
 		ns.ClearPosition()
 		ns.Announce.ClearPopupPosition()
+		ns.Timeline.ClearPosition()
 		out("windows moved back to their default places.")
 	end,
 	options     = function() ns.Options.Open() end,
