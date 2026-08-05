@@ -55,46 +55,13 @@ defaults are:
 The sequence renders as a row of marker icons beneath the circle, and a
 **reset** button sits at the left of that row. Wedges flash as each wave goes on.
 
-## The timeline
+## The Timeline
 
-A separate window, at the top of the screen by default. The board says *where*
-to go; the timeline says *when*.
+A separate window, at the top of the screen by default shows the sequence being 
+pressed. Once the replay starts, it swaps for being an indicator of the current 
+chain of events, so you can plan accordingly.
 
-The run is written out left to right like a bar of music, one slot per wave:
-
-```
-   ┌────────────────────────────────────────────────┐
-   │    ●       ◆       ■       ○       ○           │
-   │ ───┼───────┼───────┼───────┼───────┼─────      │
-   │            ▼                                   │
-   │      the bar, on the marker being called       │
-   └────────────────────────────────────────────────┘
-        ↑ pressed         ↑ rests, not pressed yet
-```
-
-While the waves are being shown, each quadrant you press drops into the next
-slot. Waves the round is going to have but you haven't filled yet are drawn
-**hollow** — rests, in the sheet music this borrows from — so being a press short
-is visible while there's still time to fix it.
-
-During the silent repeat a **scanning bar** sweeps across. It rests on each
-marker at the moment that wave is called — so the marker under the bar is always
-the one you're hearing — and spends the cast travelling to the next one. The
-distance still to run is the time you have before the next call.
-
-Each step is timed off the boss' actual cast and re-aimed as it starts, rather
-than run at one fixed tempo. On the harder difficulty the cast switches between
-two lengths part way through a round, so a bar with a tempo baked in would drift
-off the markers by the last wave.
-
-The run always spreads across the full width, however long it is: five waves use
-the same staff seven do, at a wider spacing.
-
-It appears when it has something to say — while a round is being shown, while
-there's a run on the board, and through the repeat — and gets out of the way
-otherwise. Unlocking also brings it up so you can place it.
-
-## During the repeat
+## During the Replay
 
 When the boss starts repeating the run, SnakeSays calls each wave three ways:
 
@@ -105,7 +72,7 @@ When the boss starts repeating the run, SnakeSays calls each wave three ways:
 - **Timeline**: the scanning bar above, which is the one that tells you how long
   you have rather than just where to be.
 
-## Practice run
+## Simulate the Addon
 
 `/ss sim` makes up a run anywhere in the world, shows it going onto the board,
 then calls it back with the real voice and popup. It prints the run it's about
@@ -114,14 +81,8 @@ to play, so you can check the calls against it. `/ss sim stop` ends it.
 It runs a 5-wave phase by default; `/ss sim 6` or `/ss sim 7` practises the
 longer ones. It exists to check the announcements and to place the windows.
 
-The practice run drives the timeline exactly as a real pull does — the rests are
-laid out up front, the slots fill as the run is revealed, and the bar sweeps on
-the same clock — so it's the way to see the timeline and place it without a boss
-in front of you.
-
-The windows are normally hidden outside the delve, so a practice run brings them
-up for its duration and puts them away afterwards. It only lifts the *location*
-restriction: anything you've switched off stays off.
+This simulation is useful to show you all components of the addon working together,
+use it to calibrate your settings before the encounter.
 
 ## Something Broken?
 
