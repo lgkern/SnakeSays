@@ -1,13 +1,14 @@
 # SnakeSays
 
-A Simon-Says HUD for World of Warcraft. Built for the memory game from Azta'rec,
-the Delve Nemesis from Midnight Season 2, who divides the room into four quadrants,
-sends a run of waves through them (one safe quadrant each), then repeats the same
-run in silence.
+A Simon-Says HUD for World of Warcraft, built for the memory game from Azta'rec,
+the Delve Nemesis from Midnight Season 2. Azta'rec divides the room into four
+quadrants during its intermission, sends a run of waves through them (one safe
+quadrant each time), then repeats the same sequence without visual warnings.
+Your goal is to memorise the sequence and run to the safe quadrant each time. 
 
 **You** tap the quadrants on the board as the waves are shown. **SnakeSays** works
-out the fight's timing from the boss itself and calls the run back to you during
-the silent repeat, by voice and on screen.
+out the fight's timing and calls the run back to you during the silent repeat, 
+by voice and on screen.
 
 The memory game runs three times per pull, with an extra icon per repetition.
 **??** difficulty gets 5 waves at 90%, 6 at 60% and 7 at 30%, while **?** gets 
