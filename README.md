@@ -63,12 +63,13 @@ to go; the timeline says *when*.
 The run is written out left to right like a bar of music, one slot per wave:
 
 ```
-   ┌──────────────────────────────────────────────┐
-   │  ●    ◆    ■    ✚    ○    ○    ○             │
-   │ ─┼────┼────┼────┼────┼────┼────┼──           │
-   │       ▲                                      │
-   │   scanning bar                               │
-   └──────────────────────────────────────────────┘
+   ┌────────────────────────────────────────────────┐
+   │    ●       ◆       ■       ○       ○           │
+   │ ───┼───────┼───────┼───────┼───────┼─────      │
+   │            ▼                                   │
+   │      the bar, on the marker being called       │
+   └────────────────────────────────────────────────┘
+        ↑ pressed         ↑ rests, not pressed yet
 ```
 
 While the waves are being shown, each quadrant you press drops into the next
@@ -76,14 +77,18 @@ slot. Waves the round is going to have but you haven't filled yet are drawn
 **hollow** — rests, in the sheet music this borrows from — so being a press short
 is visible while there's still time to fix it.
 
-During the silent repeat a **scanning bar** sweeps across, and it reaches each
-marker at the exact moment that wave lands. The distance still to travel is the
-time you have left to be standing in that quadrant.
+During the silent repeat a **scanning bar** sweeps across. It rests on each
+marker at the moment that wave is called — so the marker under the bar is always
+the one you're hearing — and spends the cast travelling to the next one. The
+distance still to run is the time you have before the next call.
 
 Each step is timed off the boss' actual cast and re-aimed as it starts, rather
 than run at one fixed tempo. On the harder difficulty the cast switches between
 two lengths part way through a round, so a bar with a tempo baked in would drift
 off the markers by the last wave.
+
+The run always spreads across the full width, however long it is: five waves use
+the same staff seven do, at a wider spacing.
 
 It appears when it has something to say — while a round is being shown, while
 there's a run on the board, and through the repeat — and gets out of the way

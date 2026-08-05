@@ -5,9 +5,9 @@ local _, ns = ...
 --
 -- The board says *where* to go. This says *when*. The run reads left to right,
 -- one slot per wave, and during the silent repeat a scanning bar sweeps across
--- it and arrives at each marker at the exact moment that wave lands -- so the
--- distance still to travel is the time the player has left to be standing in
--- that quadrant.
+-- it, resting on each marker as that wave is called and travelling to the next
+-- one over the cast -- so the distance still to run is the time left before the
+-- next call.
 --
 -- Its own window, on purpose. The board wants to be small and near the
 -- character where it is quick to click; this wants to be large and near the
@@ -22,8 +22,8 @@ local _, ns = ...
 --             player has not filled yet are drawn hollow -- rests, in the sheet
 --             music the whole thing is borrowed from -- so being a press short
 --             is visible while there is still time to fix it.
---   calling   the bar sweeps. Each step is animated on its own, from the slot
---             just struck to the next one, over however long the boss' cast
+--   calling   the bar sweeps. Each step is animated on its own, from the marker
+--             being called to the one after it, over however long the boss' cast
 --             actually runs (Detector.CastEndsAt). It is re-aimed every step
 --             rather than run at one speed across the whole row: on hard the
 --             cast switches between two lengths part way through a round, so a
@@ -39,12 +39,14 @@ ns.Timeline = Timeline
 
 local STRIP_H  = 14      -- drag strip along the top
 local PAD      = 14
-local SLOT     = 42      -- nominal icon size, at the nominal wave count
-local GAP      = 16
-local PITCH    = SLOT + GAP
-local TRACK_H  = 58
+local SLOT     = 36      -- icon size, until a run is long enough to need less
+local GAP      = 22      -- the gap the nominal width is laid out with
+local TRACK_H  = 54
 local BAR_W    = 3
+local POINTER_W = 16     -- width at the base of the playhead triangle
+local POINTER_H = 10
 local MIN_ICON = 10      -- floor for a run long enough to need compressing
+local MIN_GAP  = 8       -- icons never close up tighter than this
 
 local POP_TIME    = 0.22  -- a press dropping into its slot
 local POP_SCALE   = 1.6
@@ -67,16 +69,29 @@ local scan = { active = false, fromX = 0, toX = 0, startAt = 0, endAt = 0, toInd
 -- ---------------------------------------------------------------------------
 -- Geometry
 --
--- Constant pitch up to the nominal wave count, so a short run does not stretch
--- itself across the whole window and the markers do not slide sideways as the
--- board fills. Only a run longer than the fight is supposed to produce gets
--- squeezed, which keeps a stray extra press from pushing the rest off the end.
+-- The run is spread evenly across the whole staff, however long it is: five
+-- waves use the same width seven do, at a wider spacing. The window is a fixed
+-- size the player has placed and sized to taste, so leaving two thirds of it
+-- empty on a short round wastes the room they gave it.
+--
+-- The icons only start closing up when the spacing can no longer hold them a
+-- gap apart, which is past the longest round the fight is supposed to produce --
+-- so in practice a stray extra press costs a little size rather than pushing the
+-- rest of the run off the end.
 -- ---------------------------------------------------------------------------
 
 local function metrics(count)
-	if count <= nominalSlots then return SLOT, PITCH end
-	local size = math.max(MIN_ICON, math.min(SLOT, math.floor(trackW / count) - 4))
+	if count <= 1 then return SLOT, 0 end
+
+	local size = SLOT
 	local pitch = (trackW - size) / (count - 1)
+
+	if pitch < size + MIN_GAP then
+		-- Solve for the largest icon that still leaves MIN_GAP between neighbours.
+		size = math.max(MIN_ICON, (trackW - (count - 1) * MIN_GAP) / count)
+		pitch = (trackW - size) / (count - 1)
+	end
+
 	return size, pitch
 end
 
@@ -121,6 +136,28 @@ local function buildSlot(index)
 	return holder
 end
 
+-- The playhead: a triangle sitting under the bar, apex on the line and flaring
+-- downward, so the bar reads as a needle resting on the staff.
+--
+-- Stacked slivers rather than a piece of art. Blizzard's arrow textures carry
+-- their own padding inside the image, so anchoring one by its edges puts the
+-- point a couple of pixels off the line it is supposed to be under -- and this
+-- addon has no triangle of its own to use instead. Rows widening by a fixed step
+-- are centred on the bar by construction and cannot drift out of line.
+--
+-- Parented to the bar, so it travels with it and hides with it for free. Each
+-- row is two pixels tall on a one pixel step, so the overlap leaves no seams at
+-- a non-integer UI scale.
+local function buildPointer()
+	local step = (POINTER_W - BAR_W) / (POINTER_H - 1)
+	for row = 1, POINTER_H do
+		local sliver = bar:CreateTexture(nil, "OVERLAY")
+		sliver:SetSize(BAR_W + step * (row - 1), 2)
+		sliver:SetPoint("TOP", bar, "BOTTOM", 0, -(row - 1))
+		sliver:SetColorTexture(1, 0.95, 0.6, 1)
+	end
+end
+
 local function buildBar()
 	bar = CreateFrame("Frame", nil, track)
 	bar:SetSize(BAR_W, TRACK_H)
@@ -131,12 +168,7 @@ local function buildBar()
 	core:SetAllPoints(bar)
 	core:SetColorTexture(1, 0.95, 0.6, 1)
 
-	-- A soft leading edge, so the eye reads a direction rather than a stick.
-	local glow = bar:CreateTexture(nil, "ARTWORK")
-	glow:SetPoint("TOPRIGHT", bar, "TOPLEFT", 0, 0)
-	glow:SetPoint("BOTTOMRIGHT", bar, "BOTTOMLEFT", 0, 0)
-	glow:SetWidth(26)
-	glow:SetColorTexture(1, 0.9, 0.45, 0.18)
+	buildPointer()
 end
 
 local function buildStrip()
@@ -165,12 +197,17 @@ end
 local function build()
 	if frame then return end
 
+	-- The window is sized for the longest round the fight can show. Shorter runs
+	-- spread themselves across the same staff rather than shrinking it, so the
+	-- window never changes size under the player once they have placed it.
 	nominalSlots = ns.Detector.MaxWaves()
-	trackW = nominalSlots * PITCH - GAP
+	trackW = nominalSlots * (SLOT + GAP) - GAP
 	frameW = trackW + PAD * 2
 
 	frame = CreateFrame("Frame", "SnakeSaysTimeline", UIParent)
-	frame:SetSize(frameW, STRIP_H + TRACK_H + PAD)
+	-- Tall enough for the playhead to hang below the staff without touching the
+	-- bottom edge of the window.
+	frame:SetSize(frameW, STRIP_H + 2 + TRACK_H + POINTER_H + 6)
 	frame:SetMovable(true)
 	frame:SetClampedToScreen(true)
 	frame:SetFrameStrata("MEDIUM")
@@ -239,11 +276,14 @@ function Timeline.Render(list)
 
 		local quadrant = list[i]
 		if quadrant then
+			-- Just the marker. The outline is scaffolding for an empty slot, and
+			-- once every slot is full a row of framed icons is only busier than a
+			-- row of icons.
 			local marker = ns.GetMarker(ns.GetAssignment(quadrant))
 			slot.icon:SetTexCoord(unpack(marker.coords))
 			slot.icon:Show()
-			slot.hole:SetColorTexture(marker.color[1], marker.color[2], marker.color[3], 0.30)
-			slot.ring:SetColorTexture(marker.color[1], marker.color[2], marker.color[3], 0.85)
+			slot.ring:Hide()
+			slot.hole:Hide()
 
 			-- During the replay the staff reads as a progress bar in its own
 			-- right: what has already been called stays lit, what is still to
@@ -256,8 +296,8 @@ function Timeline.Render(list)
 		else
 			-- A rest. The round says this wave is coming; nobody has said where.
 			slot.icon:Hide()
-			slot.hole:SetColorTexture(0.04, 0.04, 0.05, 1)
-			slot.ring:SetColorTexture(1, 1, 1, 0.5)
+			slot.ring:Show()
+			slot.hole:Show()
 			slot:SetAlpha(REST_ALPHA)
 		end
 	end
@@ -324,7 +364,8 @@ local function animateBar(now)
 
 	bar:SetPoint("CENTER", track, "LEFT", scan.fromX + (scan.toX - scan.fromX) * t, 0)
 
-	-- Arrival: the wave the bar was racing has landed.
+	-- Arrival. The marker the bar has just landed on is the one about to be
+	-- called, so the flare and the voice go off together.
 	if t >= 1 and not scan.struck then
 		scan.struck = true
 		local slot = slots[scan.toIndex]
@@ -346,12 +387,20 @@ end
 -- Replay wiring
 -- ---------------------------------------------------------------------------
 
--- Aim the bar at the slot being called, to arrive as its wave lands.
+-- The bar leads the calls by one slot: it sits on the marker being called right
+-- now, and spends the cast travelling to the one that will be called next.
 --
--- The span comes off the live cast every step. Where the client will not say --
--- and it often will not in here -- the slot length is the same estimate the
--- detector itself falls back on, which keeps the bar moving at roughly the
--- right speed instead of teleporting.
+-- That is a slot ahead of where "the bar arrives as the wave lands" would put
+-- it, and it is the sync the player actually hears. The call for a wave goes out
+-- at cast start -- voice and popup both -- so the marker under the bar has to be
+-- the marker being said aloud. Trailing by a slot meant the voice said "Purple"
+-- while the bar was still sitting on the blue before it.
+--
+-- The travel time comes off the live cast every step rather than from a tempo,
+-- because on hard the cast switches between two lengths part way through a
+-- round. Where the client will not say -- and it often will not in here -- a
+-- slot's length is the same estimate the detector itself falls back on, which
+-- keeps the bar moving at roughly the right speed instead of teleporting.
 function Timeline.OnStep(index)
 	if not frame then return end
 
@@ -365,23 +414,24 @@ function Timeline.OnStep(index)
 	local count = slotCount(list)
 	local size, pitch = metrics(math.max(count, 1))
 
-	-- Carry on from wherever the bar actually is, so a step arriving early or
-	-- late does not make it jump backwards.
-	local fromX = scan.active and scan.toX or 0
-	if index <= 1 then fromX = 0 end
+	-- Past the last marker there is nowhere left to point, so the bar runs off
+	-- the end of the staff instead -- which is the last wave's landing time, and
+	-- the replay closes as it gets there.
+	local nextIndex = index + 1
+	local toX = (nextIndex <= count) and slotX(nextIndex, size, pitch) or trackW
 
 	scan.active  = true
 	scan.struck  = false
-	scan.fromX   = fromX
-	scan.toX     = slotX(index, size, pitch)
+	scan.fromX   = slotX(index, size, pitch)
+	scan.toX     = toX
 	scan.startAt = now
 	scan.endAt   = endsAt
-	scan.toIndex = index
+	scan.toIndex = nextIndex
 
-	-- Put it at the start of its run now rather than leaving it where the last
-	-- step finished until the next frame draws: at the top of a fresh replay that
-	-- stale position is the far end of the staff, which flashes.
-	bar:SetPoint("CENTER", track, "LEFT", fromX, 0)
+	-- Land it on the called marker now rather than on the next frame. Waiting
+	-- leaves it wherever the previous step finished for a frame, which at the top
+	-- of a fresh replay is the far end of the staff.
+	bar:SetPoint("CENTER", track, "LEFT", scan.fromX, 0)
 	bar:Show()
 	Timeline.Render(list)
 end

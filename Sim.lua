@@ -36,8 +36,12 @@ local function at(delay, fn)
 end
 
 -- The single way out. Every ending -- stopped by hand, run to completion, or
--- abandoned before it started -- goes through here, so the borrowed window
--- visibility can't be left behind.
+-- abandoned before it started -- goes through here, so nothing the run borrowed
+-- can be left behind: the window visibility and the declared wave count.
+--
+-- The made-up run itself stays on the board on purpose, to be looked at after
+-- the fact; the next pull clears it (see arm()). Only what was *borrowed* is
+-- handed back here.
 local function tearDown()
 	running = false
 	cancelTimers()

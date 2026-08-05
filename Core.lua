@@ -167,6 +167,17 @@ function ns.SetAutoReset(v) db().autoReset = not not v end
 function ns.GetAutoResetTime() return db().autoResetTime or DEFAULTS.autoResetTime end
 function ns.SetAutoResetTime(v) db().autoResetTime = v end
 
+-- Re-ask every window whether it should be on screen. The location gates -- the
+-- map restriction, which map, and the override that lifts them -- apply to all of
+-- them at once, so they change through here rather than each poking the board and
+-- forgetting whatever was added later. Forgetting is exactly what happened: the
+-- practice run dropped its override and only the board heard about it, leaving the
+-- timeline stranded until a reload.
+function ns.ApplyWindowVisibility()
+	if ns.HUD then ns.HUD.ApplyShown() end
+	if ns.Timeline then ns.Timeline.ApplyShown() end
+end
+
 function ns.GetRestrictToMap()
 	local v = db().restrictToMap
 	if v == nil then return DEFAULTS.restrictToMap end
@@ -174,13 +185,13 @@ function ns.GetRestrictToMap()
 end
 function ns.SetRestrictToMap(v)
 	db().restrictToMap = not not v
-	if ns.HUD then ns.HUD.ApplyShown() end
+	ns.ApplyWindowVisibility()
 end
 
 function ns.GetMapID() return db().mapID or DEFAULTS.mapID end
 function ns.SetMapID(v)
 	db().mapID = v
-	if ns.HUD then ns.HUD.ApplyShown() end
+	ns.ApplyWindowVisibility()
 end
 
 -- The player's current uiMapID (nil if unavailable).
@@ -205,7 +216,7 @@ function ns.HasVisibilityOverride() return visibilityOverride end
 
 function ns.SetVisibilityOverride(v)
 	visibilityOverride = not not v
-	if ns.HUD then ns.HUD.ApplyShown() end
+	ns.ApplyWindowVisibility()
 end
 
 -- Whether we are standing in Venomfall Deeps. Two independent signals, either
