@@ -8,6 +8,7 @@
 ## IconTexture: Interface\AddOns\SnakeSays\snakesays
 ## AddonCompartmentFunc: SnakeSays_OnCompartment
 ## X-Curse-Project-ID: 1593065
+## X-Wago-ID: qKQm38Kx
 
 # Load order: shared state -> the board -> the encounter machine, then
 # everything that reacts to it -> UI -> commands.
