@@ -9,16 +9,16 @@ run in silence.
 out the fight's timing from the boss itself and calls the run back to you during
 the silent repeat, by voice and on screen.
 
-The mechanic runs more than once per pull, and the run gets longer each time. On
-**??** difficulty it's 5 waves at 90%, 6 at 60% and 7 at 30%. Each phase is
-recorded and replayed on its own; the previous one is cleared when the next
-channel starts.
+The memory game runs three times per pull, with an extra icon per repetition.
+**??** difficulty gets 5 waves at 90%, 6 at 60% and 7 at 30%, while **?** gets 
+3, 4, and 5 waves at the same percentages. Each phase is recorded and replayed 
+on its own; the previous one is cleared when the next channel starts.
 
 It records and displays only. It never moves your character, targets, or places
 world markers, so there is nothing protected here: **every button and keybind
 works in combat.**
 
-## How it works
+## How the Fight Works
 
 There are two halves to each memory game, and SnakeSays splits the work the same
 way:
@@ -32,15 +32,7 @@ Remembering the sequence in the middle of the fight is the hard part, and it's t
 
 ## The HUD
 
-A circle split by an X into four cardinal wedges:
-
-```
-        North
-     \    ▲    /
-   West ◀  ●  ▶ East
-     /    ▼    \
-        South
-```
+A circle split by an X into four cardinal wedges.
 
 Each wedge shows a raid marker and is tinted to that marker's colour. The
 defaults are:
