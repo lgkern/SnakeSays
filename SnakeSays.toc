@@ -13,12 +13,15 @@
 # Load order: shared state -> the board -> the encounter machine, then
 # everything that reacts to it -> UI -> commands.
 # Announce and Timeline register listeners on Detector at load, so they must
-# come after it.
+# come after it. Comms drives the board and the practice run, so it comes after
+# both -- it only ever reaches for them from an event, but the order says which
+# way the dependency runs.
 Core.lua
 Sequence.lua
 Detector.lua
 Announce.lua
 Sim.lua
+Comms.lua
 HUD.lua
 Timeline.lua
 Options.lua

@@ -323,6 +323,87 @@ describe("a logged pull, as the client actually delivered it", function()
 		assert.same({ "Orange", "Purple", "Blue" }, wow.spokenText())
 	end)
 
+	-- A logged pull spent its whole length starting and abandoning rounds off the
+	-- boss' ordinary casting: the "by shape" fallback takes any channel at all
+	-- when the client names nothing, and the boss channels plenty. Each one wiped
+	-- the board on the way in and put two lines in chat on the way out, dozens of
+	-- times. An unreadable channel now has to last before it counts.
+	describe("short channels the client will not describe", function()
+		local function briefChannel(ns, seconds)
+			wow.startChannel("boss1", 999999, seconds,
+				{ secret = true, nameless = true, timeless = true })
+			wow.advance(seconds)
+			wow.stopChannel("boss1")
+			wow.advance(0.4)
+			return ns
+		end
+
+		it("does not start a round for a channel that is over in a second", function()
+			local ns = enc.ready()
+			enc.pull(ns, enc.NORMAL)
+			wow.aurasBlocked = true
+
+			briefChannel(ns, 0.8)
+
+			assert.is_false(ns.Detector.IsShowingRound())
+			assert.is_false(wow.chatContains("cut short"))
+			assert.is_false(wow.chatContains("No input detected"))
+		end)
+
+		it("stays quiet through a whole pull's worth of them", function()
+			local ns = enc.ready()
+			enc.pull(ns, enc.NORMAL)
+			wow.aurasBlocked = true
+
+			for _ = 1, 20 do briefChannel(ns, 0.8) end
+
+			assert.equals(0, #wow.chat)
+		end)
+
+		it("does not wipe the board the player is filling", function()
+			local ns = enc.ready()
+			enc.pull(ns, enc.NORMAL)
+			wow.aurasBlocked = true
+
+			ns.Seq.Press("N")
+			ns.Seq.Press("E")
+			for _ = 1, 5 do briefChannel(ns, 0.8) end
+
+			assert.same({ "N", "E" }, ns.Seq.Get())
+		end)
+
+		it("still opens a round for a channel that keeps going", function()
+			local ns = enc.ready()
+			enc.pull(ns, enc.NORMAL)
+			wow.aurasBlocked = true
+
+			local slot = enc.SLOT[enc.NORMAL]
+			wow.startChannel("boss1", 999999, slot * 3,
+				{ secret = true, nameless = true, timeless = true })
+			wow.advance(2.5)
+
+			assert.is_true(ns.Detector.IsShowingRound())
+		end)
+
+		-- The confirmation window and the player's first press overlap: the waves
+		-- are already crossing the room while the channel proves itself.
+		it("keeps presses made while the channel was proving itself", function()
+			local ns = enc.ready()
+			enc.pull(ns, enc.NORMAL)
+			wow.aurasBlocked = true
+
+			local slot = enc.SLOT[enc.NORMAL]
+			wow.startChannel("boss1", 999999, slot * 3,
+				{ secret = true, nameless = true, timeless = true })
+			wow.advance(0.6)
+			ns.Seq.Press("N")          -- well inside the confirmation window
+			wow.advance(2.5)
+
+			assert.is_true(ns.Detector.IsShowingRound())
+			assert.same({ "N" }, ns.Seq.Get())
+		end)
+	end)
+
 	it("re-reads the round when it turns out shorter than the pull's shape implied", function()
 		local ns = enc.ready()
 		enc.pull(ns, enc.NORMAL)
@@ -848,6 +929,38 @@ describe("learning the slot length", function()
 
 		assert.is_near(18.2 / 7, ns.SlotLength("hard"), 0.001)
 		assert.is_true(wow.chatContains("wave timing corrected"))
+	end)
+
+	-- A follower whose sequence never arrived watched a three-wave round with an
+	-- empty board, counted four casts because nothing bounded the counter, and
+	-- taught itself a 2.625s slot from the pair. The correction has to come from
+	-- a client that actually had the round.
+	it("learns nothing from a round it recorded nothing for", function()
+		local ns = enc.ready()
+		enc.pull(ns, enc.HARD)
+
+		enc.showRound(ns, { "N", "E", "S", "W", "N", "E" }, { length = 18.2, silent = true })
+		assert.equals(0, ns.Seq.Count())
+
+		enc.callRound(ns, 7)
+		enc.kill(ns)
+
+		assert.is_near(3.003, ns.SlotLength("hard"), 0.001)   -- the shipped seed, untouched
+		assert.is_false(wow.chatContains("wave timing corrected"))
+	end)
+
+	-- The calling half outlasts the auto-reset timer, so the board can be empty
+	-- by the time the correction is worked out even though it was full all round.
+	it("still learns when auto-reset empties the board during the calling half", function()
+		local ns = enc.ready()
+		enc.pull(ns, enc.HARD)
+
+		enc.showRound(ns, { "N", "E", "S", "W", "N", "E" }, { length = 18.2 })
+		enc.callRound(ns, 7)
+		enc.kill(ns)
+
+		assert.equals(0, ns.Seq.Count())                      -- auto-reset got it
+		assert.is_near(18.2 / 7, ns.SlotLength("hard"), 0.001)
 	end)
 
 	it("corrects itself when fewer waves are called, once the round is provably over", function()

@@ -32,6 +32,10 @@ local RESET_SIZE = 26
 local PAD        = 12
 local ROW_GAP    = 8
 
+-- Where the run starts in the row: after the reset button.
+local SEQ_START = RESET_SIZE + SEQ_GAP * 2
+
+
 -- Clickable-area insets per wedge (fractions of CIRCLE), biasing each button to
 -- the body of its own wedge so neighbouring wedges don't steal the click.
 local SIDE  = 0.26
@@ -57,12 +61,22 @@ local function applyMarkerIcon(tex, marker)
 	tex:SetTexCoord(unpack(marker.coords))
 end
 
+-- A wedge in its resting colour, or brightened under the mouse. One function,
+-- because three places put a wedge back to normal -- a repaint, the end of a
+-- flash, and the mouse leaving -- and each of them used to do it by hand.
+local function paintWedge(b, highlight)
+	local boost = highlight and 1.35 or 1
+	b.wedge:SetVertexColor(b.r * boost, b.g * boost, b.b * boost)
+end
+
 -- ---------------------------------------------------------------------------
 -- Build
 -- ---------------------------------------------------------------------------
 
 local function buildWedge(dir, def)
-	local b = CreateFrame("Button", nil, circle)
+	-- Named so it can be looked at from a `/run` line: this is the one part of
+	-- the addon whose behaviour cannot be reproduced headlessly.
+	local b = CreateFrame("Button", "SnakeSaysWedge" .. dir, circle)
 	b:SetAllPoints(circle)
 
 	local wedge = b:CreateTexture(nil, "ARTWORK")
@@ -81,16 +95,21 @@ local function buildWedge(dir, def)
 
 	b:RegisterForClicks("LeftButtonUp")
 	b:SetScript("OnClick", function()
+		-- Traced before anything else: "the wedge did nothing" and "the click
+		-- never reached the wedge" are different problems with the same symptom,
+		-- and only this line tells them apart.
+		ns.Trace("wedge %s clicked%s", dir,
+			InCombatLockdown and InCombatLockdown() and " (in combat)" or "")
 		if ns.Seq.Press(dir) then HUD.Flash(dir) end
 	end)
 	b:SetScript("OnEnter", function()
-		wedge:SetVertexColor(b.r * 1.35, b.g * 1.35, b.b * 1.35)
+		paintWedge(b, true)
 		GameTooltip:SetOwner(b, "ANCHOR_TOP")
 		GameTooltip:SetText(ns.QUADRANT_NAME[dir])
 		GameTooltip:Show()
 	end)
 	b:SetScript("OnLeave", function()
-		wedge:SetVertexColor(b.r, b.g, b.b)
+		paintWedge(b)
 		GameTooltip:Hide()
 	end)
 
@@ -186,7 +205,7 @@ local function build()
 	-- rather than written down: the wave counts live in one table, and the board
 	-- should follow them if they ever change.
 	local width  = math.max(CIRCLE + PAD * 2,
-		PAD * 2 + RESET_SIZE + SEQ_GAP + ns.Detector.MaxWaves() * (SEQ_ICON + SEQ_GAP))
+		PAD * 2 + SEQ_START + ns.Detector.MaxWaves() * (SEQ_ICON + SEQ_GAP))
 	local height = MOVER_H + 4 + CIRCLE + ROW_GAP + SEQ_ICON + PAD
 
 	frame = CreateFrame("Frame", "SnakeSaysHUD", UIParent)
@@ -220,6 +239,10 @@ local function build()
 	HUD.ApplyScale()
 	HUD.ApplyShown()
 	HUD.ApplyLock()
+	-- Last, and it has to be here rather than only in Comms: Comms.lua loads
+	-- first, so its PLAYER_LOGIN runs before this frame exists and its call to
+	-- install the chat macros finds nothing to install them on. Without this line
+	-- the wedges carry no macro until the setting is next touched.
 end
 
 -- ---------------------------------------------------------------------------
@@ -234,16 +257,16 @@ function HUD.Refresh()
 		local marker = ns.GetMarker(ns.GetAssignment(dir))
 		local c = marker.color
 		b.r, b.g, b.b = c[1], c[2], c[3]
-		b.wedge:SetVertexColor(c[1], c[2], c[3])
 		applyMarkerIcon(b.icon, marker)
+		paintWedge(b)
 	end
 	HUD.RenderSequence(ns.Seq.Get())
 end
 
--- Lay out the recorded sequence as a row of marker icons after the reset button.
+-- Lay out the recorded sequence as a row of marker icons after the buttons.
 function HUD.RenderSequence(list)
 	if not frame then return end
-	local startX = RESET_SIZE + SEQ_GAP * 2
+	local startX = SEQ_START
 	for i, dir in ipairs(list) do
 		local tex = seqIcons[i]
 		if not tex then
@@ -267,7 +290,7 @@ function HUD.Flash(dir)
 	b.wedge:SetVertexColor(1, 1, 1, 1)
 	if b.flashTimer then b.flashTimer:Cancel() end
 	b.flashTimer = C_Timer.NewTimer(0.16, function()
-		b.wedge:SetVertexColor(b.r, b.g, b.b)
+		paintWedge(b)
 		b.flashTimer = nil
 	end)
 end
@@ -291,6 +314,20 @@ end
 -- The board frame, for anything that wants to sit against it.
 function HUD.GetFrame()
 	return frame
+end
+
+-- Where the board sits in the stacking order, and whether it is taking mouse
+-- input at all. Reported by `/ss status`, because "I clicked it and nothing
+-- happened" is answered by something covering it far more often than by the
+-- click handler being wrong -- and the two are indistinguishable from the chair.
+function HUD.Describe()
+	if not frame then return "not built" end
+	local wedge = buttons.N
+	return ("strata=%s level=%d mouse=%s wedge-mouse=%s wedge-enabled=%s"):format(
+		frame:GetFrameStrata() or "?", frame:GetFrameLevel() or 0,
+		tostring(frame:IsMouseEnabled()),
+		wedge and tostring(wedge:IsMouseEnabled()) or "?",
+		wedge and tostring(wedge:IsEnabled()) or "?")
 end
 
 -- The player's chosen board size. Scaling the whole frame keeps the wedges,

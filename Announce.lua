@@ -239,7 +239,12 @@ function Announce.PopupSubtitle() return popup and popup.subtitle:GetText() or "
 -- Wiring
 -- ---------------------------------------------------------------------------
 
+-- No quadrant means a run this client only heard called in party chat: the boss
+-- is calling the waves and the timeline can follow them, but which quadrant each
+-- one is arrived as a secret value and cannot be known. Nothing to say, and
+-- nothing to put on screen -- guessing aloud is worse than silence.
 function Announce.OnStep(index, current, nextUp)
+	if not current then return end
 	Announce.Say(ns.QuadrantLabel(current))
 	showCall(current, nextUp)
 end

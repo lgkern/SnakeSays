@@ -89,6 +89,12 @@ local DEFAULTS = {
 	timelineEnabled = true,
 	timelinePosition = nil,   -- nil => top centre
 
+	-- Group sync: one player fills the board and everyone else's follows. On by
+	-- default -- it only ever does anything when somebody else in the group is
+	-- running this addon too, and the whole point is that it works without four
+	-- people first finding the setting.
+	groupSync = true,
+
 	-- Window sizes, as frame-scale multipliers (1 = as shipped).
 	hudScale = 1,
 	popupScale = 1,
@@ -281,10 +287,26 @@ function ns.SetPopupEnabled(v) db().popupEnabled = not not v end
 function ns.GetPopupSubtitle() return flag("popupSubtitle") end
 function ns.SetPopupSubtitle(v) db().popupSubtitle = not not v end
 
+-- Whether this client takes part in group sync at all: sending its own presses,
+-- and taking somebody else's. One switch for both directions, because a player
+-- who does not want the addon talking to the group does not want it listening
+-- either, and two switches would be two ways to end up half connected.
+function ns.GetGroupSync() return flag("groupSync") end
+function ns.SetGroupSync(v) db().groupSync = not not v end
+
 -- Step-by-step chat output from the detector. Off, and not in DEFAULTS, so it
 -- can only ever be on because someone asked for it.
 function ns.GetDebug() return db().debug == true end
 function ns.SetDebug(v) db().debug = not not v end
+
+-- One diagnostic line, when `/ss debug` is on. Detector had its own copy of this
+-- from the start; the input path needs it too now, and a field report is worth
+-- much more when every step of a press can account for itself.
+function ns.Trace(fmt, ...)
+	if not ns.GetDebug() then return end
+	local ok, line = pcall(string.format, fmt, ...)
+	ns.Print("|cff888888[ss]|r " .. (ok and line or tostring(fmt)))
+end
 
 -- What the announcer calls a quadrant: its marker's colour, or the marker's own
 -- name when the player prefers to hear marks.
@@ -429,7 +451,7 @@ boot:SetScript("OnEvent", function(_, _, name)
 	d.mapID = d.mapID or DEFAULTS.mapID
 
 	for _, key in ipairs({ "ttsEnabled", "ttsOverlap", "popupEnabled", "popupSubtitle",
-		"timelineEnabled" }) do
+		"timelineEnabled", "groupSync" }) do
 		if d[key] == nil then d[key] = DEFAULTS[key] end
 	end
 	d.ttsVoice = d.ttsVoice or DEFAULTS.ttsVoice

@@ -139,6 +139,24 @@ local SLOT_TOLERANCE = 0.20   -- in slots
 
 local MAX_WAVES = 12   -- the longest real round is seven; this is a sanity rail
 
+-- How long an unreadable channel has to keep going before it is taken for a
+-- round.
+--
+-- The "by shape" road into findSermonChannel accepts any channel at all on a
+-- candidate unit when the client will name neither the spell nor its times --
+-- which in this content is most of them. That is deliberate, and the round's
+-- length was supposed to throw the impostors out at the end. It does, but far
+-- too late: a logged pull started and abandoned a "round" every second or so
+-- off the boss' ordinary casting, and each one wiped the board on its way in
+-- (beginRound) and put two lines in chat on its way out.
+--
+-- So an unreadable channel now has to prove it is long enough to be a round
+-- before it is allowed to be one. The shortest real round is three waves of
+-- 3.503s -- ten and a half seconds -- so waiting two of them costs nothing and
+-- silences everything the boss does in passing. A channel that declares its own
+-- length is believed at once; it never needed the help.
+local CONFIRM_CHANNEL = 2.0
+
 local WATCHED_UNIT = {}
 for _, unit in ipairs(CANDIDATE_UNITS) do WATCHED_UNIT[unit] = true end
 
@@ -237,6 +255,7 @@ local roundIndex = 0        -- which memory game of this pull is running
 local castEndsAt            -- GetTime() at which the current call's wave lands
 local roundPoll             -- looks for the round's aura while the encounter is up
 local endTimer              -- closes the replay when the last wave lands
+local pendingRound          -- a candidate channel being timed before it counts
 
 local replaying  = false
 local echoIndex  = 0
@@ -285,8 +304,32 @@ local function cancelEndTimer()
 	end
 end
 
+-- The run being called back, and how long it is.
+--
+-- Our own board where there is one. Failing that, a run heard over party chat:
+-- a follower has nothing to *say* -- which quadrant each wave is cannot be known
+-- from a secret value -- but the boss is calling the waves all the same, and the
+-- scanning bar can travel over the icons on the staff in time with them. Which
+-- is most of what the replay is for, and all of it a follower can be given.
+--
+-- The list comes back nil for a heard run, so every listener is handed a nil
+-- quadrant and each decides for itself: the timeline moves its bar, the voice
+-- and the popup stay quiet because they have nothing to name.
+local function replayRun()
+	local list = ns.Seq.Get()
+	if #list > 0 then return list, #list end
+	local heard = ns.Comms and ns.Comms.Heard()
+	if heard and #heard > 0 then return nil, #heard end
+	return list, 0
+end
+
+function Detector.ReplayLength()
+	local _, count = replayRun()
+	return count
+end
+
 function Detector.BeginReplay()
-	if ns.Seq.Count() == 0 then return false end
+	if Detector.ReplayLength() == 0 then return false end
 	replaying = true
 	echoIndex = 0
 	return true
@@ -295,12 +338,12 @@ end
 -- Step to the next call. Whatever decides *when* a step happens lives outside
 -- this function: the boss' casts during a pull, timers during a practice run.
 function Detector.Advance()
-	local list = ns.Seq.Get()
-	if not replaying or echoIndex >= #list then return false end
+	local list, count = replayRun()
+	if not replaying or echoIndex >= count then return false end
 	echoIndex = echoIndex + 1
-	trace("step %d of %d: now %s, next %s", echoIndex, #list,
-		tostring(list[echoIndex]), tostring(list[echoIndex + 1]))
-	notifyReplay(echoIndex, list[echoIndex], list[echoIndex + 1])
+	trace("step %d of %d: now %s, next %s", echoIndex, count,
+		tostring(list and list[echoIndex]), tostring(list and list[echoIndex + 1]))
+	notifyReplay(echoIndex, list and list[echoIndex], list and list[echoIndex + 1])
 	return true
 end
 
@@ -495,6 +538,21 @@ local function settleWaveCount(callingHalfEnded)
 	if not round or calls <= 0 or calls == round.waves then return false end
 	if calls < round.waves and not callingHalfEnded then return false end
 
+	-- A client that had nothing on its board when the showing half closed never
+	-- entered the replay, so nothing bounded its call counter and it counted
+	-- whatever the boss happened to cast. A logged follower whose sequence never
+	-- arrived counted four calls for a three-wave round and "corrected" the slot
+	-- to 2.625s off the back of it, which then had to be un-learned a round
+	-- later. A round nobody recorded has nothing to teach.
+	--
+	-- Asked of the board as it was at the end of the showing half, not as it is
+	-- now: the calling half is long enough for auto-reset to have emptied a board
+	-- that was full the whole way through the round.
+	if (round.recorded or 0) == 0 then
+		trace("not learning from a round nothing was recorded for (%d call(s) counted)", calls)
+		return false
+	end
+
 	local corrected = round.length / calls
 	if not learnSlot(round.difficulty, corrected) then return false end
 
@@ -507,7 +565,10 @@ end
 -- The showing half
 -- ---------------------------------------------------------------------------
 
-local function beginRound(aura, unit)
+-- `seenAt` is when the channel was first sighted, which is not when we decided
+-- to believe it: an unreadable channel spends CONFIRM_CHANNEL proving itself,
+-- and those seconds belong to the round.
+local function beginRound(aura, unit, seenAt)
 	-- A new round starting is the one thing that proves the previous round's
 	-- calling half ran to its end, so this is where a disagreement in either
 	-- direction can be trusted.
@@ -518,7 +579,31 @@ local function beginRound(aura, unit)
 	-- to be in this list: one left behind cost a logged pull its second and
 	-- third memory games, because the fallback's per-round call budget was
 	-- already spent by the time the second round's calls arrived.
-	ns.Seq.Reset()
+	-- The board is cleared for the new round -- except when what is on it was
+	-- pressed *during* this round's own confirmation window. An unreadable
+	-- channel takes CONFIRM_CHANNEL to prove itself, the player is watching the
+	-- first waves cross the room throughout, and wiping here would eat the first
+	-- press or two of every round the client refuses to describe.
+	local firstPress = ns.Seq.FirstPressAt()
+	if not (seenAt and firstPress and firstPress >= seenAt) then
+		ns.Seq.Reset()
+	else
+		trace("keeping %d press(es) made while the channel was proving itself",
+			ns.Seq.Count())
+	end
+
+	-- The same rule for a run arriving over party chat, and it matters more
+	-- there: the caller is typing the whole time the channel is proving itself,
+	-- so on a follower the confirmation window is where most of the run lands.
+	if ns.Comms then
+		local firstHeard = ns.Comms.FirstHeardAt()
+		if seenAt and firstHeard and firstHeard >= seenAt then
+			trace("keeping %d line(s) heard while the channel was proving itself",
+				#ns.Comms.Heard())
+		else
+			ns.Comms.Clear()
+		end
+	end
 	calls, seenCasts, lastCallAt, unreadableCalls = 0, {}, nil, 0
 	roundIndex = roundIndex + 1
 
@@ -529,7 +614,7 @@ local function beginRound(aura, unit)
 	-- expiry, so working backwards from that keeps the slot boundaries exact
 	-- however late the poll got to it.
 	local now = GetTime()
-	local startedAt = now
+	local startedAt = seenAt or now
 	local expires = aura and usableNumber(aura.expires)
 	if expires and declared then
 		startedAt = expires - declared
@@ -609,6 +694,23 @@ local function endRound(cutShort)
 		return false
 	end
 
+	-- An empty board at the end of the showing half is the one failure the addon
+	-- cannot tell apart from working perfectly: it has nothing to call back, so
+	-- it says nothing, which looks exactly like a detector that never fired. Say
+	-- which it was. Nobody in the group having pressed and nobody having sent is
+	-- the same silence from here, so the hint covers both.
+	--
+	-- Only for a round that was otherwise whole. A round we could not read has
+	-- already said so on the line above, and saying both is saying neither: a
+	-- logged pull printed the pair together several dozen times, which is how
+	-- the spurious rounds above were found in the first place.
+	local watched = math.max(ns.Seq.Count(), ns.Comms and #ns.Comms.Heard() or 0)
+	if watched == 0 then
+		ns.Print("|cffff5555No input detected during setup.|r Nothing was pressed on the "
+			.. "board this round" .. (ns.GetGroupSync() and " and nothing came over party chat" or "")
+			.. ", so there is nothing to call back.")
+	end
+
 	round.waves, round.slot, round.difficulty = waves, slot, diff
 
 	-- The calling half counts the waves for us, and that is what corrects the
@@ -617,6 +719,12 @@ local function endRound(cutShort)
 	lastRound = {
 		length = length, waves = waves, slot = slot,
 		difficulty = diff, unit = round.unit,
+		-- How much this client had to work with, taken now rather than later:
+		-- settleWaveCount runs after the calling half, by which time auto-reset
+		-- may have cleared a board that was full for the whole round. A run heard
+		-- over party chat counts -- a follower watched the same round, it just
+		-- watched it on somebody else's hands.
+		recorded = watched,
 	}
 	return true
 end
@@ -760,11 +868,18 @@ local function onCall(unit, castGUID)
 	-- Announced at cast start, so the player has the whole cast to move (R5.2).
 	-- Past the end of the recorded run this does nothing, which is the answer to
 	-- extra casts (R5.4).
-	if not Detector.Advance() then return false end
+	--
+	-- It still counts as a call. This returned false when there was nothing to
+	-- announce, and the fence in identifyEcho only counts the calls it is told
+	-- about -- so a client with an empty board never reached "past the last call"
+	-- and took every boss cast for the rest of the pull as one. A logged follower
+	-- counted seven calls on a three-wave round and stayed that way until the
+	-- group wiped.
+	if not Detector.Advance() then return true end
 
 	-- Close the replay when the last wave actually lands, not the moment it is
 	-- called: the call is a warning, and the popup has to outlive the walk.
-	if echoIndex >= ns.Seq.Count() then
+	if echoIndex >= Detector.ReplayLength() then
 		local landsIn = castEndsAt and (castEndsAt - GetTime())
 		if not landsIn or landsIn <= 0 then
 			landsIn = lastRound and lastRound.slot or SEED_SLOT.hard
@@ -818,6 +933,7 @@ local function arm(id, name)
 	showing, lastRound = nil, nil
 	calls, seenCasts, lastCallAt, unreadableCalls = 0, {}, nil, 0
 	roundIndex = 0
+	pendingRound = nil
 	declaredWaves = nil
 	Detector.EndReplay()
 
@@ -825,6 +941,11 @@ local function arm(id, name)
 	-- else -- a practice run, an earlier pull, a stray press -- and calling it
 	-- back as though the boss had just shown it is worse than calling nothing.
 	ns.Seq.Reset()
+
+	-- The caller starts typing the moment the first wave crosses the room, which
+	-- is before any channel has proved itself a round. So the chat window opens
+	-- with the pull, not with the round.
+	if ns.Comms then ns.Comms.SetListening(true) end
 
 	-- Watch for the round's aura on a timer as well as on UNIT_AURA. Which unit
 	-- token a delve nemesis turns up on is not something worth staking the whole
@@ -855,6 +976,8 @@ local function disarm()
 	showing, lastRound = nil, nil
 	calls, seenCasts, lastCallAt, unreadableCalls = 0, {}, nil, 0
 	roundIndex = 0
+	pendingRound = nil
+	if ns.Comms then ns.Comms.SetListening(false) end
 	stopPoll()
 	Detector.EndReplay()
 	ns.Seq.Reset()
@@ -978,11 +1101,42 @@ function scanForRound()
 		for _, unit in ipairs(CANDIDATE_UNITS) do
 			local sermon = findSermon(unit)
 			if sermon then
+				-- A channel that says how long it runs has already proved itself.
+				local declared = usableNumber(sermon.duration)
+				if declared and declared > 0 then
+					pendingRound = nil
+					bossGUID = guidOf(unit) or bossGUID
+					trace("sermon up on %s: %.3fs", unit, declared)
+					beginRound(sermon, unit)
+					return true
+				end
+
+				-- Unreadable, so it has to last. Timed from the first sighting,
+				-- and started over if it moves to a different unit.
+				if not pendingRound or pendingRound.unit ~= unit then
+					pendingRound = { unit = unit, since = GetTime() }
+					trace("unreadable channel on %s - waiting %.1fs to see if it is a round",
+						unit, CONFIRM_CHANNEL)
+					return false
+				end
+
+				local held = GetTime() - pendingRound.since
+				if held < CONFIRM_CHANNEL then return false end
+
+				local since = pendingRound.since
+				pendingRound = nil
 				bossGUID = guidOf(unit) or bossGUID
-				trace("sermon up on %s: %.3fs", unit, sermon.duration or 0)
-				beginRound(sermon, unit)
+				trace("sermon up on %s: length unreadable, still going after %.2fs", unit, held)
+				beginRound(sermon, unit, since)
 				return true
 			end
+		end
+		-- Nothing channelling anywhere: whatever we were timing has stopped, and
+		-- stopping that soon is the proof it was never a round.
+		if pendingRound then
+			trace("candidate channel on %s went away after %.2fs - not a round",
+				pendingRound.unit, GetTime() - pendingRound.since)
+			pendingRound = nil
 		end
 		return false
 	end
@@ -1125,6 +1279,11 @@ function Detector.IsShowingRound()
 	return showing ~= nil
 end
 
+-- Which memory game of this pull is running: 1, 2 or 3, and 0 before the first.
+-- Group sync stamps its messages with it, so a message from the round just gone
+-- cannot land on the board of the round that has started.
+function Detector.RoundIndex() return roundIndex end
+
 -- The round in progress, for anything that wants to draw or report it: how many
 -- waves, how long a slot is, when it started, and which slot is running.
 function Detector.ActiveGrid()
@@ -1150,6 +1309,7 @@ function Detector.Reset()
 	showing, lastRound = nil, nil
 	calls, seenCasts, lastCallAt, unreadableCalls = 0, {}, nil, 0
 	roundIndex = 0
+	pendingRound = nil
 	declaredWaves = nil
 	ns.Seq.Reset()
 end

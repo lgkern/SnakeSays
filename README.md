@@ -8,7 +8,9 @@ Your goal is to memorise the sequence and run to the safe quadrant each time.
 
 **You** tap the quadrants on the board as the waves are shown. **SnakeSays** works
 out the fight's timing and calls the run back to you during the silent repeat, 
-by voice and on screen.
+by voice and on screen. In a group you can use [Leader Mode](#leader-mode) to
+have only one person input the sequence.
+.
 
 The memory game runs three times per pull, with an extra icon per repetition.
 **??** difficulty gets 5 waves at 90%, 6 at 60% and 7 at 30%, while **?** gets 
@@ -77,11 +79,39 @@ longer ones. It exists to check the announcements and to place the windows.
 This simulation is useful to show you all components of the addon working together,
 use it to calibrate your settings before the encounter.
 
+## Leader Mode
+
+Running with a group? SnakeSays supports **Leader Mode**.
+
+The **party leader** is the leader. Everyone else just watches.
+
+**Setup, for the leader only:**
+
+1. Run `/ss macro` out of combat. It creates five macros — `SS North`, `SS East`,
+   `SS South`, `SS West` and `SS Reset`.
+2. **Drag them onto your action bars** and use those instead of the board or your
+   normal keybinds. The macros are what share the run; clicking the board does
+   nothing for the group.
+3. Run `/ss macro` again if you change which marker a quadrant uses.
+
+**What followers get:** the run appears on their timeline as marker icons, in
+order, and the scanning bar runs across them so they can see which wave is being
+called. Due to addon restrictions, there are no voice callouts and no on-screen call 
+for other group members.
+
+`/ss sync off` opts out of watching the leader's run.
+
 ## Something Broken?
 
 `/ss status` prints what the addon currently believes: whether it thinks it's in
 the delve, which windows are up, the encounter state, the wave timing it's
-working from, and how many TTS voices are installed.
+working from, how many TTS voices are installed, and whose board you're on.
+
+If a round goes by with nothing pressed and nothing read off chat, you'll get
+**No input detected during setup.** in chat when the showing half ends. That's
+the addon saying it worked and had nothing to work with — as opposed to silence,
+which would mean it never saw the round at all. The two look identical without
+that line, so it's the first thing to check when a pull produces no calls.
 
 ## Settings
 
@@ -100,6 +130,8 @@ working from, and how many TTS voices are installed.
   doesn't slide forward as you add to the sequence.
 - **Only show inside the Delve Nemesis map** - on by default. Untick it to place
   the windows out in the world.
+- **Share the sequence with my group** - on by default. Watches for the leader's
+  run in party chat. See [Leader Mode](#leader-mode).
 - **During the replay** - call things by colour or by marker, voice volume, 
 let calls overlap, on-screen call on/off, next-up line on/off, timeline on/off.
 - **Window size** - one slider each for the board, the on-screen call and the
@@ -121,6 +153,8 @@ let calls overlap, on-screen call on/off, next-up line on/off, timeline on/off.
 | `/ss show` · `/ss hide` · `/ss toggle` | show / hide the HUD |
 | `/ss lock` · `/ss unlock` | lock / unlock for dragging |
 | `/ss reset` | clear the recorded sequence |
+| `/ss sync` | share the sequence with your group (`on` / `off` to be explicit) |
+| `/ss macro` | make (or update) the macros that share your board with the group |
 | `/ss timeline` | toggle the timeline (`on` / `off` to be explicit) |
 | `/ss recenter` | move every window back to its default place |
 

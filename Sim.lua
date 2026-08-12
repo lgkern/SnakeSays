@@ -144,6 +144,7 @@ function Sim.StartDemo(waves, forcedRun)
 	local run = forcedRun or makeRun(waves)
 	Sim.lastRun = run
 
+
 	-- Declare the length up front, the way a real round's aura does, so the
 	-- timeline lays out its rests and the practice run rehearses the whole thing
 	-- rather than a staff that grows a slot at a time.

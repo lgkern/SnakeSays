@@ -43,6 +43,9 @@ local function isSecret(v)
 	return type(v) == "table" and rawget(v, "__secret") == true
 end
 
+-- For the tests: did this value survive as the secret the client gave us?
+M.isSecret = isSecret
+
 -- ---------------------------------------------------------------------------
 -- State (rebuilt by M.reset)
 -- ---------------------------------------------------------------------------
@@ -81,9 +84,9 @@ M.aurasBlocked = false
 -- return the frame so chained calls keep working.
 local stubbed = {
 	"SetSize", "SetWidth", "SetHeight", "SetAllPoints", "ClearAllPoints",
-	"SetMovable", "SetResizable", "SetClampedToScreen", "SetFrameStrata",
-	"SetFrameLevel", "SetToplevel", "StartMoving", "StopMovingOrSizing",
-	"EnableMouse", "EnableKeyboard", "SetPropagateKeyboardInput", "SetUserPlaced",
+	"SetMovable", "SetResizable", "SetClampedToScreen",
+	"SetToplevel", "StartMoving", "StopMovingOrSizing",
+	"EnableKeyboard", "SetPropagateKeyboardInput", "SetUserPlaced",
 	"RegisterForDrag", "RegisterForClicks", "SetHitRectInsets", "SetClipsChildren",
 	"SetHighlightTexture", "SetNormalTexture", "SetPushedTexture", "SetDisabledTexture",
 	"SetBackdrop", "SetBackdropColor", "SetBackdropBorderColor",
@@ -93,7 +96,7 @@ local stubbed = {
 	"SetFont", "SetSpacing", "SetWordWrap", "SetNonSpaceWrap", "SetMaxLines",
 	"SetMinMaxValues", "SetValueStep", "SetObeyStepOnDrag", "SetOrientation",
 	"SetAlpha", "SetIgnoreParentScale", "SetIgnoreParentAlpha",
-	"SetParent", "Raise", "Lower", "SetAttribute", "SetID",
+	"SetParent", "Raise", "Lower", "SetID",
 	"Click", "LockHighlight", "UnlockHighlight",
 }
 
@@ -104,6 +107,27 @@ for _, name in ipairs(stubbed) do
 	frameProto[name] = function(self) return self end
 end
 
+-- Stacking order and mouse input, remembered rather than discarded: `/ss status`
+-- reports them so a click that goes nowhere in the field can be told apart from
+-- a click handler that is wrong.
+function frameProto:SetFrameStrata(s) self._strata = s return self end
+function frameProto:GetFrameStrata() return self._strata or "MEDIUM" end
+function frameProto:SetFrameLevel(n) self._level = n return self end
+function frameProto:GetFrameLevel() return self._level or 1 end
+function frameProto:EnableMouse(v) self._mouse = v ~= false return self end
+function frameProto:IsMouseEnabled() return self._mouse ~= false end
+
+-- Attributes are remembered, not discarded: the chat macros the press buttons
+-- carry live here, and whether they were installed is the whole question.
+function frameProto:SetAttribute(k, v)
+	self._attrs = self._attrs or {}
+	self._attrs[k] = v
+	return self
+end
+function frameProto:GetAttribute(k)
+	return self._attrs and self._attrs[k] or nil
+end
+
 function frameProto:Show() self._shown = true end
 function frameProto:Hide() self._shown = false end
 function frameProto:IsShown() return self._shown and true or false end
@@ -111,6 +135,26 @@ function frameProto:IsVisible() return self._shown and true or false end
 function frameProto:SetShown(v) self._shown = v and true or false end
 
 function frameProto:SetText(t) self._text = t end
+
+-- The client formats secret values in C and never hands them back, which is the
+-- only way a secret can be put on screen at all. Modelled faithfully: a secret
+-- argument is kept exactly as it arrived and never concatenated, because
+-- concatenating one is what throws.
+function frameProto:SetFormattedText(fmt, ...)
+	local args = { ... }
+	self._format = fmt
+	for _, v in ipairs(args) do
+		if isSecret(v) then
+			self._formatArgs = args
+			self._text = nil
+			return self
+		end
+	end
+	self._formatArgs = args
+	local ok, out = pcall(string.format, fmt, ...)
+	self._text = ok and out or fmt
+	return self
+end
 function frameProto:GetText() return self._text end
 function frameProto:GetStringWidth() return #tostring(self._text or "") * 6 end
 function frameProto:GetFont() return "Fonts\\FRIZQT__.TTF", 12, "" end
@@ -440,6 +484,19 @@ function M.reset()
 	M.channels = {}
 	M.aurasBlocked = false
 
+	M.addonMessages = {}    -- { {prefix, text, channel}, ... } sent by the addon
+	M.addonPrefixes = {}    -- prefix -> true, once registered
+	M.groupSize = 0         -- 0 = solo; the addon only sends when this is > 1
+	M.inRaid = false
+	M.playerName = "Tester"
+	M.playerRealm = "Realm"
+	M.groupLeader = nil     -- short name of whoever leads; nil = nobody does
+	-- party1..N, realm-qualified the way the client spells them. The addon walks
+	-- these to turn a message's sender into a unit token, because a name is not
+	-- one -- see the note at the top of Comms.lua's Names section.
+	M.groupMembers = { "Caller-Realm", "Someone-Realm", "Third-Realm" }
+	M.addonVersion = "1.0.0"
+
 	_G.SnakeSaysDB = nil
 
 	_G.UIParent = newRegion("Frame", "UIParent", nil)
@@ -496,6 +553,74 @@ function M.reset()
 	_G.UnitCanAttack = function(_, unit) return M.hostile[unit] and true or false end
 	_G.UnitExists = function(unit) return M.hostile[unit] ~= nil end
 	_G.UnitGUID = function(unit) return M.guids[unit] end
+
+	-- ---------------------------------------------------------------------
+	-- Group + addon channel
+	-- ---------------------------------------------------------------------
+
+	local function shortOf(name)
+		if name == "player" then return M.playerName end
+		return tostring(name):match("^[^-]+") or tostring(name)
+	end
+
+	-- Which character a unit token stands for, realm and all, or nil for a token
+	-- nobody is behind. Deliberately strict about *tokens*: handing this a bare
+	-- name gets nothing back, which is what the client does and the whole reason
+	-- Comms walks the roster instead of guessing.
+	local function memberOf(unit)
+		if unit == "player" then return M.playerName, M.playerRealm end
+		local index = tostring(unit):match("^party(%d+)$") or tostring(unit):match("^raid(%d+)$")
+		if not index then return nil end
+		local full = M.groupMembers[tonumber(index)]
+		if not full then return nil end
+		local name, realm = full:match("^([^-]+)%-?(.*)$")
+		return name, (realm ~= "" and realm or nil)
+	end
+
+	_G.UnitName = function(unit) return shortOf(unit) end
+	_G.UnitFullName = function(unit) return memberOf(unit) end
+	-- Faithful to what the live client did, which is not what you would guess:
+	-- a realm-qualified name is not a unit token, and does not even resolve the
+	-- character you are playing. Observed in the field as
+	-- `UnitIsUnit("Genji-Anasterian", "player") -> false`. Anything in the addon
+	-- that leans on a name-as-token has to fail here too, or the suite is
+	-- agreeing with an assumption the game does not share.
+	_G.UnitIsUnit = function(a, b)
+		local an = memberOf(a)
+		local bn = memberOf(b)
+		return an ~= nil and bn ~= nil and an == bn
+	end
+	_G.Ambiguate = function(name) return shortOf(name) end
+
+	_G.IsInGroup = function() return M.groupSize > 1 end
+	_G.IsInRaid = function() return M.inRaid end
+	_G.GetNumGroupMembers = function() return M.groupSize end
+
+	-- Answers for real unit tokens only. A name string gets `false`, mirroring
+	-- the client behaviour that broke the first cut of this feature.
+	_G.UnitIsGroupLeader = function(unit)
+		if not M.groupLeader then return false end
+		local name = memberOf(unit)
+		return name ~= nil and name == M.groupLeader
+	end
+
+	_G.C_AddOns = {
+		GetAddOnMetadata = function(_, key)
+			if key == "Version" then return M.addonVersion end
+			return nil
+		end,
+	}
+
+	_G.C_ChatInfo = {
+		RegisterAddonMessagePrefix = function(prefix)
+			M.addonPrefixes[prefix] = true
+			return true
+		end,
+		SendAddonMessage = function(prefix, text, channel)
+			table.insert(M.addonMessages, { prefix = prefix, text = text, channel = channel })
+			return true
+		end,
+	}
 
 	-- Indexed within a filter, exactly like the client: the addon has to walk it
 	-- and stop at the first gap.
@@ -618,6 +743,42 @@ function M.reset()
 	_G.SaveBindings = function() end
 	_G.GetCurrentBindingSet = function() return 1 end
 
+	-- Macros the addon writes for the player. Character macros only, and capped
+	-- the way the client caps them, so "no room left" is reachable in a test.
+	M.macros = {}
+	M.macroLimit = 30
+
+	-- The macro API takes a file ID, not a path -- a path string is accepted and
+	-- then quietly ignored, which is how the first cut produced five macros with
+	-- no icon on them. Deterministic here so a test can name the one it wants.
+	M.fileIDs = {}
+	local nextFileID = 4000000
+	_G.GetFileIDFromPath = function(path)
+		if not M.fileIDs[path] then
+			nextFileID = nextFileID + 1
+			M.fileIDs[path] = nextFileID
+		end
+		return M.fileIDs[path]
+	end
+
+	_G.GetMacroIndexByName = function(name)
+		for i, m in ipairs(M.macros) do
+			if m.name == name then return i end
+		end
+		return 0
+	end
+	_G.CreateMacro = function(name, icon, body)
+		if #M.macros >= M.macroLimit then return nil end
+		table.insert(M.macros, { name = name, icon = icon, body = body })
+		return #M.macros
+	end
+	_G.EditMacro = function(index, name, icon, body)
+		local m = M.macros[index]
+		if not m then return nil end
+		m.name, m.icon, m.body = name, icon, body
+		return index
+	end
+
 	_G.SlashCmdList = {}
 
 	_G.IsAltKeyDown = function() return false end
@@ -660,6 +821,20 @@ function M.slash(handlerKey, args)
 	local handler = _G.SlashCmdList[handlerKey]
 	assert(handler, "no slash handler registered for " .. tostring(handlerKey))
 	return handler(args or "")
+end
+
+-- Deliver an addon message the way the client would, from somebody else.
+-- `sender` arrives realm-qualified, always, which is what the addon has to cope
+-- with when it works out whether a message is its own coming back.
+function M.addonMessage(prefix, text, sender, channel)
+	M.fire("CHAT_MSG_ADDON", prefix, text, channel or "PARTY", sender or "Caller-Realm")
+end
+
+-- The bodies of every addon message the addon has sent, in order.
+function M.sentAddonMessages()
+	local out = {}
+	for i, msg in ipairs(M.addonMessages) do out[i] = msg.text end
+	return out
 end
 
 -- Did the mock ever hand out a chat line containing `needle`?

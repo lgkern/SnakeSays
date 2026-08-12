@@ -57,6 +57,9 @@ local UPCOMING_ALPHA = 0.4
 local REST_ALPHA     = 0.22
 
 local frame, strip, track, bar, hint
+local heardText = {}   -- pooled font strings for a run called over party chat
+local heardLines = {}  -- the lines themselves, still secret, never read
+local heardCount = 0
 local slots = {}          -- pooled slot widgets, index -> holder frame
 local nominalSlots        -- the longest round the fight can show (Detector.MaxWaves)
 local trackW, frameW
@@ -248,11 +251,59 @@ end
 -- How many slots to draw: what the player has pressed, or what the round is
 -- going to want, whichever is more. The second is what puts the rests on the
 -- staff before the presses that fill them.
+--
+-- A run heard over party chat stands in for our own while we have not pressed
+-- anything. The icons are somebody else's, but they take the same slots, and
+-- everything that reads off this -- the rests, the spacing, where the scanning
+-- bar travels to -- has to agree about where those slots are.
 local function slotCount(list)
 	local pressed = #list
+	if pressed == 0 then pressed = heardCount end
 	local expected = ns.Detector.ExpectedWaves()
 	if expected and expected > pressed then return expected, pressed end
 	return pressed, pressed
+end
+
+-- Whether the staff is showing somebody else's run rather than our own.
+local function borrowed()
+	return heardCount > 0 and ns.Seq.Count() == 0
+end
+
+-- The heard run, drawn but never read.
+--
+-- The lines are secret values -- matching, comparing or measuring one throws --
+-- so nothing here looks at one. What it does instead is build a texture escape
+-- around it and let the client join the two:
+--
+--   |TInterface\TargetingFrame\UI-RaidTargetingIcon_2:24:24|t
+--                                                  ^ the secret line
+--
+-- The caller's macro types the bare marker number, so the secret is exactly the
+-- last segment of a path Blizzard ships a file for, and what comes out is the
+-- marker itself rather than the digit. Formatting happens in C, which is the one
+-- place a secret can be used at all. It is what NorthernSkyRaidTools does for
+-- L'ura's runes, against their own art instead of Blizzard's.
+--
+-- A line that is not a marker number -- somebody talking inside the window --
+-- resolves to no file and draws nothing, which is the failure we want.
+local HEARD_ICON = "|TInterface\\TargetingFrame\\UI-RaidTargetingIcon_%%s:%d:%d|t"
+
+local function drawHeard(count, size, pitch)
+	local icon = HEARD_ICON:format(size, size)
+	for i = 1, count do
+		local fs = heardText[i]
+		if not fs then
+			fs = track:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+			heardText[i] = fs
+		end
+		fs:ClearAllPoints()
+		fs:SetPoint("CENTER", track, "LEFT", slotX(i, size, pitch), 0)
+		fs:SetFormattedText(icon, heardLines[i])
+		fs:Show()
+	end
+	for i = count + 1, #heardText do
+		heardText[i]:Hide()
+	end
 end
 
 -- Repaint the staff. Safe to call at any time and from anywhere: it derives
@@ -262,10 +313,11 @@ function Timeline.Render(list)
 	if not frame then return end
 	list = list or ns.Seq.Get()
 
-	local count, pressed = slotCount(list)
+	local count = slotCount(list)
 	local size, pitch = metrics(math.max(count, 1))
 	local replaying = ns.Detector.IsReplaying()
 	local at = ns.Detector.EchoIndex()
+	local heardHere = borrowed()
 
 	for i = 1, count do
 		local slot = slots[i] or buildSlot(i)
@@ -275,7 +327,13 @@ function Timeline.Render(list)
 		slot:Show()
 
 		local quadrant = list[i]
-		if quadrant then
+		if heardHere and i <= heardCount then
+			-- Somebody else's marker holds this slot. It is drawn as text, below,
+			-- because it is a secret value and a texture escape is the only way to
+			-- put one on screen -- and the slot's own outline is a child frame, so
+			-- leaving it up would draw a ring straight over the icon.
+			slot:Hide()
+		elseif quadrant then
 			-- Just the marker. The outline is scaffolding for an empty slot, and
 			-- once every slot is full a row of framed icons is only busier than a
 			-- row of icons.
@@ -306,9 +364,15 @@ function Timeline.Render(list)
 		slots[i]:Hide()
 	end
 
+	drawHeard(heardHere and heardCount or 0, size, pitch)
+
 	-- A press that just landed drops into its slot. Worked out by comparing
 	-- against the last count rather than by being told, so a reset, a reload and
 	-- a repaint from the options page all come out still rather than popping.
+	--
+	-- Our own presses only. A wave arriving over party chat is not this player
+	-- doing anything, and the pop belongs to the hand that pressed.
+	local pressed = #list
 	if pressed > (Timeline.lastPressed or 0) then
 		for i = (Timeline.lastPressed or 0) + 1, pressed do
 			local slot = slots[i]
@@ -455,7 +519,18 @@ function Timeline.HasSomethingToShow()
 	if not ns.IsLocked() then return true end
 	if ns.Detector.IsReplaying() then return true end
 	if ns.Seq.Count() > 0 then return true end
+	if heardCount > 0 then return true end
 	return ns.Detector.ExpectedWaves() ~= nil
+end
+
+-- Somebody else's run arriving over party chat. Kept, and repainted through the
+-- same Render as our own so the two can never disagree about where a slot is --
+-- which they have to agree on, because the scanning bar travels over both.
+function Timeline.RenderHeard(lines)
+	heardLines = lines or {}
+	heardCount = #heardLines
+	if not frame then return end
+	Timeline.Render(ns.Seq.Get())
 end
 
 function Timeline.ApplyShown()
@@ -519,6 +594,7 @@ function Timeline.SlotX(index)
 end
 
 function Timeline.TrackWidth() return trackW end
+function Timeline.HeardFontString(index) return heardText[index] end
 
 function Timeline.BarX()
 	if not bar or not scan.active then return nil end

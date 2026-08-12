@@ -36,7 +36,7 @@ local panel, categoryID
 local iconButtons = {}    -- dir -> { markerId -> button }
 local keybindButtons = {} -- command -> button
 local styleButtons = {}   -- announce style key -> radio button
-local showCB, lockCB, autoResetCB, timerSlider, timerValue, restrictCB
+local showCB, lockCB, autoResetCB, timerSlider, timerValue, restrictCB, syncCB
 local ttsCB, overlapCB, popupCB, subtitleCB, timelineCB
 local volumeSlider, volumeValue
 local scaleSliders = {}   -- the three window-size sliders, refreshed together
@@ -416,6 +416,17 @@ local function buildPanel()
 	restrictCB = buildCheckbox("Only show the HUD inside the Delve Nemesis map", y - 142,
 		ns.GetRestrictToMap, ns.SetRestrictToMap)
 
+	syncCB = buildCheckbox("Share the sequence with my group", y - 168,
+		ns.GetGroupSync, ns.SetGroupSync)
+
+	local syncHint = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+	syncHint:SetPoint("TOPLEFT", panel, "TOPLEFT", LEFT + 24, y - 190)
+	syncHint:SetText("Read the caller's board off party chat. Whoever speaks first fills "
+		.. "your board; your own presses always win on it. /ss macro prints what the "
+		.. "caller needs to send.")
+	syncHint:SetWidth(360)
+	syncHint:SetJustifyH("LEFT")
+
 	buildAnnounceColumn()
 
 	panel:SetScript("OnShow", Options.Refresh)
@@ -440,6 +451,7 @@ function Options.Refresh()
 	timerSlider:SetValue(secs)            -- fires OnValueChanged -> updates label + db
 	timerValue:SetText(secs .. "s")       -- explicit, in case the value didn't change
 	restrictCB:SetChecked(restrictCB.getter())
+	syncCB:SetChecked(syncCB.getter())
 
 	local style = ns.GetAnnounceStyle()
 	for key, b in pairs(styleButtons) do
