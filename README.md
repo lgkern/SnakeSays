@@ -10,7 +10,6 @@ Your goal is to memorise the sequence and run to the safe quadrant each time.
 out the fight's timing and calls the run back to you during the silent repeat, 
 by voice and on screen. In a group you can use [Leader Mode](#leader-mode) to
 have only one person input the sequence.
-.
 
 The memory game runs three times per pull, with an extra icon per repetition.
 **??** difficulty gets 5 waves at 90%, 6 at 60% and 7 at 30%, while **?** gets 

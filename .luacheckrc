@@ -20,6 +20,10 @@ read_globals = {
 	"GetBindingKey", "GetBindingText", "SetBinding", "SetBindingClick", "SaveBindings", "GetCurrentBindingSet",
 	"IsAltKeyDown", "IsControlKeyDown", "IsShiftKeyDown", "IsMouseButtonDown",
 	"InCombatLockdown",
+	-- Group sync: which chat channel the caller's macros type into, and the
+	-- macro window itself, which `/ss macro` writes them to.
+	"IsInRaid", "GetFileIDFromPath",
+	"CreateMacro", "EditMacro", "GetMacroIndexByName",
 	"wipe", "strtrim",
 }
 

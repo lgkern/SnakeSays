@@ -107,7 +107,7 @@ describe("group sync over party chat", function()
 	-- client cares about.
 	describe("/ss macro", function()
 		it("makes all five, with the right bodies", function()
-			local ns = inGroup()
+			inGroup()
 
 			wow.slash("SNAKESAYS", "macro")
 
@@ -121,7 +121,7 @@ describe("group sync over party chat", function()
 		-- then ignores it, and a macro with no icon cannot be dragged to a bar --
 		-- which is what the first cut shipped.
 		it("gives each one its own marker icon, by file ID", function()
-			local ns = inGroup()
+			inGroup()
 			wow.slash("SNAKESAYS", "macro")
 
 			assert.equals("number", type(wow.macros[1].icon))
@@ -131,7 +131,7 @@ describe("group sync over party chat", function()
 		end)
 
 		it("still gives the reset macro something draggable", function()
-			local ns = inGroup()
+			inGroup()
 			wow.slash("SNAKESAYS", "macro")
 			assert.equals("number", type(wow.macros[5].icon))
 		end)
@@ -148,7 +148,7 @@ describe("group sync over party chat", function()
 		end)
 
 		it("refuses in combat rather than being refused", function()
-			local ns = inGroup()
+			inGroup()
 			_G.InCombatLockdown = function() return true end
 
 			wow.slash("SNAKESAYS", "macro")
@@ -158,7 +158,7 @@ describe("group sync over party chat", function()
 		end)
 
 		it("prints them to copy when there is no room", function()
-			local ns = inGroup()
+			inGroup()
 			wow.macroLimit = 0
 
 			wow.slash("SNAKESAYS", "macro")
@@ -173,7 +173,7 @@ describe("group sync over party chat", function()
 	-- must not be inspected on any path.
 	describe("a secret message body", function()
 		it("does not throw", function()
-			local ns = roundStarts(inGroup())
+			roundStarts(inGroup())
 
 			assert.has_no.errors(function() say("Caller-Realm", "N") end)
 			assert.is_false(wow.chatContains("threw"))
@@ -292,7 +292,7 @@ describe("group sync over party chat", function()
 
 	describe("who is calling", function()
 		it("says a run is being called, once", function()
-			local ns = roundStarts(inGroup())
+			roundStarts(inGroup())
 
 			say("Caller-Realm", "N")
 			say("Caller-Realm", "E")
@@ -469,7 +469,7 @@ describe("group sync over party chat", function()
 
 	describe("/ss status", function()
 		it("reports the window and who is calling", function()
-			local ns = roundStarts(inGroup())
+			roundStarts(inGroup())
 			say("Caller-Realm", "N")
 
 			wow.slash("SNAKESAYS", "status")
