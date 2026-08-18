@@ -39,24 +39,107 @@ local function installedVoices()
 	return voices
 end
 
+-- Every voice the client has, for the picker in the options.
+function Announce.Voices() return installedVoices() end
+
+-- The name as the operating system spells it, cut back to the voice's own name:
+-- the client hands these over decorated in ways that differ per platform
+-- ("Microsoft David Desktop - English (United States)", "Samantha (Enhanced)").
+-- Comparing the whole string would match nothing on one platform and everything
+-- on the other.
+local function plainName(voice)
+	local name = voice and voice.name
+	if type(name) ~= "string" then return "" end
+	name = name:gsub("%b()", ""):gsub("%s+%-.*$", "")
+	return (name:lower():gsub("^%s*(.-)%s*$", "%1"))
+end
+
+-- macOS ships a set of joke voices alongside the real ones, and they are not
+-- degraded speech -- they do not say the word at all. This was reported from the
+-- field by the author of Deadly Boss Mods: the addon had picked "Hysterical",
+-- so instead of calling the colours it laughed at the player, once per wave, for
+-- a whole pull.
+--
+-- Matched against the trimmed name whole rather than as a substring, so a real
+-- voice is never blocked for containing one of these by accident ("Organ" would
+-- otherwise take "Morgan" with it).
+local NOVELTY_VOICES = {
+	["albert"] = true, ["bad news"] = true, ["bahh"] = true, ["bells"] = true,
+	["boing"] = true, ["bubbles"] = true, ["cellos"] = true, ["deranged"] = true,
+	["good news"] = true, ["hysterical"] = true, ["jester"] = true,
+	["organ"] = true, ["pipe organ"] = true, ["superstar"] = true,
+	["trinoids"] = true, ["whisper"] = true, ["wobble"] = true, ["zarvox"] = true,
+}
+
+-- Voices known to read a single word cleanly, best first. A wave call is one
+-- word arriving three seconds before it matters, so clarity is the only thing
+-- being judged here. Substring matched, since these arrive decorated.
+local PREFERRED_VOICES = {
+	"samantha", "alex", "david", "zira", "mark",
+	"daniel", "karen", "moira", "tessa", "fiona", "serena", "hazel",
+}
+
 -- Is `voiceID` one the client actually has? Voices depend on the player's
 -- installed language packs, so a stored id can vanish between sessions.
 local function voiceExists(voiceID)
+	if type(voiceID) ~= "number" then return false end
 	for _, voice in ipairs(installedVoices()) do
 		if voice.voiceID == voiceID then return true end
 	end
 	return false
 end
 
--- The first voice this client really has, or nil if it has none.
+-- The voice to use when the player has not picked one.
 --
--- Falling back to zero is only a fallback if zero is one of them, and there is
--- no id that is safe to assume: the numbering follows whatever language packs
--- are installed. Handing the client an id it does not know is answered with
--- silence, which is indistinguishable from the feature being switched off.
-local function defaultVoice()
+-- Not "the first one". There is no id that is safe to assume -- including zero:
+-- the numbering follows whatever language packs are installed, in whatever order
+-- the system lists them, so an id is a position and not a voice. Handing the
+-- client an id it does not know is answered with silence, which is
+-- indistinguishable from the feature being switched off; handing it the wrong
+-- position is worse, because it answers.
+--
+-- So: a voice known to speak clearly, else any voice that is not a joke, else
+-- the first one there is. Only the last of those three can still be a novelty
+-- voice, and by then it is that or nothing.
+function Announce.AutoVoice()
+	local voices = installedVoices()
+	local firstSpeaking, firstAny
+
+	for _, voice in ipairs(voices) do
+		if type(voice.voiceID) == "number" then
+			firstAny = firstAny or voice.voiceID
+			if not NOVELTY_VOICES[plainName(voice)] then
+				firstSpeaking = firstSpeaking or voice.voiceID
+			end
+		end
+	end
+
+	for _, wanted in ipairs(PREFERRED_VOICES) do
+		for _, voice in ipairs(voices) do
+			if type(voice.voiceID) == "number" and not NOVELTY_VOICES[plainName(voice)]
+				and plainName(voice):find(wanted, 1, true) then
+				return voice.voiceID
+			end
+		end
+	end
+
+	return firstSpeaking or firstAny
+end
+
+-- The voice a call would come out in right now: the player's, while the client
+-- still has it, and the addon's own choice otherwise. The options page and
+-- `/ss sound` both report this rather than the stored value, because a stored
+-- voice that has gone away is exactly the case worth being able to see.
+function Announce.ActiveVoice()
+	local chosen = ns.GetTTSVoice()
+	if voiceExists(chosen) then return chosen end
+	return Announce.AutoVoice()
+end
+
+-- The name to show for `voiceID`, or nil if the client does not have it.
+function Announce.VoiceName(voiceID)
 	for _, voice in ipairs(installedVoices()) do
-		if type(voice.voiceID) == "number" then return voice.voiceID end
+		if voice.voiceID == voiceID then return tostring(voice.name) end
 	end
 	return nil
 end
@@ -69,8 +152,7 @@ function Announce.Say(text, voiceID)
 	if issecretvalue and issecretvalue(text) then return false end
 	if not C_VoiceChat or not C_VoiceChat.SpeakText then return false end
 
-	voiceID = voiceID or ns.GetTTSVoice()
-	if not voiceExists(voiceID) then voiceID = defaultVoice() end
+	if not voiceExists(voiceID) then voiceID = Announce.ActiveVoice() end
 	if not voiceID then return false end
 
 	local rate = 0
@@ -89,6 +171,83 @@ function Announce.Say(text, voiceID)
 end
 
 -- ---------------------------------------------------------------------------
+-- Deadly Boss Mods' voice
+--
+-- DBM's voice packs carry eight files, mm1 to mm8, one per raid target marker,
+-- and they say the whole instruction: "move to square". They are the same voice
+-- the rest of the pull is already being called in, recorded by a person, and on
+-- macOS they sidestep the text-to-speech voice list entirely.
+--
+-- Nothing here calls into DBM's internals. The path is the one its own warnings
+-- build (SpecialWarning.lua: "Interface\AddOns\DBM-VP<pack>\<name>.ogg"), and it
+-- is played through DBM:PlaySoundFile so the sound lands on whichever channel
+-- the player set DBM to use and obeys its silent mode.
+--
+-- Marker ids line up with no mapping at all: mm1..mm8 are Blizzard's eight raid
+-- targets in Blizzard's order, which is the order ns.MARKERS is written in.
+-- ---------------------------------------------------------------------------
+
+local DBM_MARKER_SOUND = "Interface\\AddOns\\DBM-VP%s\\mm%d.ogg"
+
+-- The voice pack DBM is set to use, or nil if there is nothing to play from.
+-- Every step is guarded: DBM may be absent, may be an old build without these
+-- fields, and may be installed with no voice pack at all -- and "the player has
+-- DBM" is not the question, "will this file exist" is.
+local function dbmVoicePack()
+	local dbm = _G.DBM
+	if type(dbm) ~= "table" or type(dbm.PlaySoundFile) ~= "function" then return nil end
+
+	local options = rawget(dbm, "Options")
+	local pack = type(options) == "table" and options.ChosenVoicePack2 or nil
+	if type(pack) ~= "string" or pack == "" or pack:lower() == "none" then return nil end
+
+	-- DBM lists the packs it actually found at login. A name left in the settings
+	-- by a pack that has since been uninstalled would build a path to nothing.
+	local versions = rawget(dbm, "VoiceVersions")
+	if type(versions) == "table" and versions[pack] == nil then return nil end
+
+	return pack
+end
+
+-- Whether a wave call would come out in DBM's voice right now. The options page
+-- reports this, because "I ticked the box and it still sounds the same" is
+-- answered by DBM having no voice pack far more often than by anything here.
+function Announce.DBMVoiceAvailable() return dbmVoicePack() ~= nil end
+
+-- Say a quadrant the DBM way. Returns true only if something was played, so the
+-- caller can fall back to text to speech -- a player who ticked the box and then
+-- uninstalled their voice pack gets the colours read out, not silence.
+function Announce.SayWithDBM(quadrant)
+	if not ns.GetDBMVoice() then return false end
+	local pack = dbmVoicePack()
+	if not pack then return false end
+	local marker = ns.GetMarker(ns.GetAssignment(quadrant))
+	if not marker then return false end
+
+	local ok = pcall(_G.DBM.PlaySoundFile, _G.DBM, DBM_MARKER_SOUND:format(pack, marker.id))
+	if not ok then
+		ns.Trace("DBM refused to play the call for %s", tostring(quadrant))
+		return false
+	end
+	return true
+end
+
+-- One wave, spoken. DBM's voice when it can, the client's own otherwise.
+--
+-- Both are behind the one "speak the safe quadrant" switch: which voice says it
+-- is a preference, whether anything says it at all is the feature.
+--
+-- Note that DBM names the marker whichever way the announce style is set --
+-- "move to square" is a recording, not a sentence being built here. The on-screen
+-- call still follows the style, so a player reading colours and hearing marks is
+-- a combination they can reach; it is theirs to choose.
+function Announce.Call(quadrant)
+	if not ns.GetTTSEnabled() then return false end
+	if Announce.SayWithDBM(quadrant) then return true end
+	return Announce.Say(ns.QuadrantLabel(quadrant))
+end
+
+-- ---------------------------------------------------------------------------
 -- Sound self-test
 --
 -- The voice fails the same way it succeeds from the outside -- nothing happens
@@ -98,25 +257,43 @@ end
 
 function Announce.SelfTest()
 	local voices = installedVoices()
+	local active = Announce.ActiveVoice()
+
 	ns.Print(("voice: enabled=%s, %d installed"):format(
 		ns.GetTTSEnabled() and "yes" or "|cffff5555no|r", #voices))
 	for _, voice in ipairs(voices) do
-		ns.Print(("    id %s  %s%s"):format(tostring(voice.voiceID), tostring(voice.name),
-			voice.voiceID == ns.GetTTSVoice() and "  |cff44ff44<- yours|r" or ""))
+		ns.Print(("    id %s  %s%s%s"):format(tostring(voice.voiceID), tostring(voice.name),
+			voice.voiceID == active and "  |cff44ff44<- in use|r" or "",
+			NOVELTY_VOICES[plainName(voice)] and "  |cff888888(novelty - never chosen for you)|r" or ""))
 	end
 
 	local stored = ns.GetTTSVoice()
-	if not voiceExists(stored) then
-		ns.Print(("    |cffffd200your stored voice (%s) is not installed|r - using %s instead."):format(
-			tostring(stored), tostring(defaultVoice())))
+	if stored == nil then
+		ns.Print(("    no voice picked, so the addon chose |cffffd200%s|r. Pick one in the "
+			.. "options if it reads badly."):format(tostring(Announce.VoiceName(active) or active)))
+	elseif not voiceExists(stored) then
+		ns.Print(("    |cffffd200your chosen voice (%s) is not installed|r - using %s instead."):format(
+			tostring(stored), tostring(Announce.VoiceName(active) or active)))
 	end
 
-	if #voices == 0 then
+	-- Reported whether or not it is switched on: "I have DBM and it still uses the
+	-- robot" is the question this answers, and half the time the reason is that
+	-- DBM itself has no voice pack selected.
+	local pack = dbmVoicePack()
+	ns.Print(("    Deadly Boss Mods voice: wanted=%s available=%s"):format(
+		ns.GetDBMVoice() and "yes" or "no",
+		pack and ("|cff44ff44" .. pack .. "|r") or "|cffff5555no voice pack|r"))
+
+	local label = ns.QuadrantLabel(ns.QUADRANTS[1])
+	if ns.GetDBMVoice() and pack then
+		ns.Print("    playing the DBM call for " .. label .. " now.")
+		Announce.Call(ns.QUADRANTS[1])
+	elseif #voices == 0 then
 		ns.Print("    |cffff5555no voices at all|r - text to speech is off in the game's own "
 			.. "Sound settings, or no voice pack is installed.")
 	else
-		ns.Print("    saying \"" .. ns.QuadrantLabel(ns.QUADRANTS[1]) .. "\" now.")
-		Announce.Say(ns.QuadrantLabel(ns.QUADRANTS[1]))
+		ns.Print("    saying \"" .. label .. "\" now.")
+		Announce.Call(ns.QUADRANTS[1])
 	end
 end
 
@@ -245,7 +422,7 @@ function Announce.PopupSubtitle() return popup and popup.subtitle:GetText() or "
 -- nothing to put on screen -- guessing aloud is worse than silence.
 function Announce.OnStep(index, current, nextUp)
 	if not current then return end
-	Announce.Say(ns.QuadrantLabel(current))
+	Announce.Call(current)
 	showCall(current, nextUp)
 end
 

@@ -93,19 +93,29 @@ local function buildWedge(dir, def)
 		def.insets[1] * CIRCLE, def.insets[2] * CIRCLE,
 		def.insets[3] * CIRCLE, def.insets[4] * CIRCLE)
 
-	b:RegisterForClicks("LeftButtonUp")
-	b:SetScript("OnClick", function()
+	-- Right-click undoes, and it is on every wedge rather than on one button of
+	-- its own: a misclick is noticed a fraction of a second after it happens, with
+	-- the cursor still on the circle, and the fix has to be where the hand already
+	-- is. Which wedge is right-clicked does not matter -- the board only ever gives
+	-- back its last press.
+	b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+	b:SetScript("OnClick", function(_, mouseButton)
 		-- Traced before anything else: "the wedge did nothing" and "the click
 		-- never reached the wedge" are different problems with the same symptom,
 		-- and only this line tells them apart.
-		ns.Trace("wedge %s clicked%s", dir,
+		ns.Trace("wedge %s %s-clicked%s", dir, mouseButton == "RightButton" and "right" or "left",
 			InCombatLockdown and InCombatLockdown() and " (in combat)" or "")
-		if ns.Seq.Press(dir) then HUD.Flash(dir) end
+		if mouseButton == "RightButton" then
+			ns.Seq.Undo()
+		elseif ns.Seq.Press(dir) then
+			HUD.Flash(dir)
+		end
 	end)
 	b:SetScript("OnEnter", function()
 		paintWedge(b, true)
 		GameTooltip:SetOwner(b, "ANCHOR_TOP")
 		GameTooltip:SetText(ns.QUADRANT_NAME[dir])
+		GameTooltip:AddLine("Right-click takes the last press back.", 0.7, 0.7, 0.7)
 		GameTooltip:Show()
 	end)
 	b:SetScript("OnLeave", function()
@@ -132,11 +142,15 @@ local function buildResetButton()
 	icon:SetAtlas("common-icon-undo")     -- circular "undo" arrow; harmless if absent
 	icon:SetVertexColor(1, 0.82, 0.2)
 
-	b:SetScript("OnClick", function() ns.Seq.Reset() end)
+	b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+	b:SetScript("OnClick", function(_, mouseButton)
+		if mouseButton == "RightButton" then ns.Seq.Undo() else ns.Seq.Reset() end
+	end)
 	b:SetScript("OnEnter", function()
 		bg:SetColorTexture(0.3, 0.3, 0.3, 0.6)
 		GameTooltip:SetOwner(b, "ANCHOR_TOP")
 		GameTooltip:SetText("Reset sequence")
+		GameTooltip:AddLine("Right-click takes the last press back.", 0.7, 0.7, 0.7)
 		GameTooltip:Show()
 	end)
 	b:SetScript("OnLeave", function()

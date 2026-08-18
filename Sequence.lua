@@ -128,6 +128,35 @@ function Seq.Adopt(quadrants)
 	return true
 end
 
+-- Take the last press back off the board.
+--
+-- A misclick used to cost the whole run: Reset was the only way to change what
+-- was recorded, and by then the waves it had swallowed were gone from memory
+-- too. One wrong marker at the end is worth taking off; nine right ones are not
+-- worth throwing away with it.
+--
+-- Only the board's own end is reachable, deliberately. Editing the middle would
+-- need a cursor, and there is no time to place one between waves.
+function Seq.Undo()
+	if #list == 0 then
+		ns.Trace("undo refused: the board is already empty")
+		return false
+	end
+	local dropped = list[#list]
+	list[#list] = nil
+	if #list == 0 then
+		-- Emptied by hand is emptied: the auto-reset was armed for a board that no
+		-- longer exists, and an empty board stops this client driving, which is what
+		-- lets the group's run back onto the timeline. Seq.Reset does both too.
+		cancelAutoReset()
+		firstAt = nil
+		if ns.Comms then ns.Comms.OnBoardCleared() end
+	end
+	changed()
+	ns.Trace("undo took %s back, board is now %d long", tostring(dropped), #list)
+	return true
+end
+
 -- A quadrant staged by the addon itself rather than pressed. Only the practice
 -- run uses this: it puts a made-up sequence on the board to call back.
 --

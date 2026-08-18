@@ -74,9 +74,16 @@ local DEFAULTS = {
 
 	-- Replay announcements
 	ttsEnabled = true,
-	ttsVoice = 0,
+	-- No voice id, on purpose. Nothing is stored until the player picks one, and
+	-- until they do Announce chooses -- see the note above ns.GetTTSVoice.
+	ttsVoice = nil,
 	ttsVolume = 50,
 	ttsOverlap = true,
+	-- Deadly Boss Mods' own voice pack says the marker ("move to square") in the
+	-- same voice the rest of the pull is called in. Off unless asked for: it only
+	-- works for players who have DBM with a voice pack selected, and the ones who
+	-- do not would just get silence.
+	dbmVoice = false,
 	announceStyle = "color",  -- "color" says Red/Orange; "marker" says Cross/Circle
 	popupEnabled = true,
 	popupSubtitle = true,     -- the "... next" line under the main call
@@ -259,14 +266,31 @@ end
 function ns.GetTTSEnabled() return flag("ttsEnabled") end
 function ns.SetTTSEnabled(v) db().ttsEnabled = not not v end
 
-function ns.GetTTSVoice() return db().ttsVoice or DEFAULTS.ttsVoice end
-function ns.SetTTSVoice(v) db().ttsVoice = v end
+-- The voice the player picked, or nil for "let the addon choose".
+--
+-- Nil is the shipped state and it is not the same as id 0. Voice ids number
+-- whatever language packs are installed, in whatever order the operating system
+-- lists them, so id 0 is not a voice -- it is a position. On Windows it lands on
+-- a speaking voice often enough that storing it looked harmless for a year; on
+-- macOS it lands in the novelty voices, and a player reported the addon laughing
+-- at them instead of calling the colours. Announce.AutoVoice picks a voice that
+-- can actually say a word, and the picker in the options overrides it.
+function ns.GetTTSVoice() return db().ttsVoice end
+function ns.SetTTSVoice(v)
+	db().ttsVoice = (type(v) == "number") and v or nil
+end
 
 function ns.GetTTSVolume() return db().ttsVolume or DEFAULTS.ttsVolume end
 function ns.SetTTSVolume(v) db().ttsVolume = v end
 
 function ns.GetTTSOverlap() return flag("ttsOverlap") end
 function ns.SetTTSOverlap(v) db().ttsOverlap = not not v end
+
+-- Speak the wave with DBM's voice pack rather than the client's text to speech.
+-- Announce falls back to text to speech on its own when DBM is not there to
+-- answer, so this being on is a preference and never a way to end up silent.
+function ns.GetDBMVoice() return flag("dbmVoice") end
+function ns.SetDBMVoice(v) db().dbmVoice = not not v end
 
 local ANNOUNCE_STYLES = { color = true, marker = true }
 
@@ -451,10 +475,14 @@ boot:SetScript("OnEvent", function(_, _, name)
 	d.mapID = d.mapID or DEFAULTS.mapID
 
 	for _, key in ipairs({ "ttsEnabled", "ttsOverlap", "popupEnabled", "popupSubtitle",
-		"timelineEnabled", "groupSync" }) do
+		"timelineEnabled", "groupSync", "dbmVoice" }) do
 		if d[key] == nil then d[key] = DEFAULTS[key] end
 	end
-	d.ttsVoice = d.ttsVoice or DEFAULTS.ttsVoice
+	-- A stored zero is not a choice: every install before the voice picker existed
+	-- was seeded with it, and there was no way in the interface to have chosen it.
+	-- Cleared back to "let the addon choose", which is the whole point of the
+	-- change -- leaving it would keep the macOS novelty voice it lands on.
+	if d.ttsVoice == 0 then d.ttsVoice = nil end
 	d.ttsVolume = d.ttsVolume or DEFAULTS.ttsVolume
 	d.announceStyle = d.announceStyle or DEFAULTS.announceStyle
 	for _, key in ipairs({ "hudScale", "popupScale", "timelineScale" }) do

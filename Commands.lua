@@ -17,6 +17,13 @@ function SnakeSays_Reset()
 	ns.Seq.Reset()
 end
 
+-- The board gives back its last press. Bindable like the rest of these, because
+-- somebody who presses the quadrants by key never has the board under the cursor
+-- to right-click in the first place.
+function SnakeSays_Undo()
+	ns.Seq.Undo()
+end
+
 -- ---------------------------------------------------------------------------
 -- Keybind click targets
 --
@@ -34,6 +41,7 @@ ns.BINDING_LABEL = {
 	SNAKESAYS_SOUTH   = "Press South quadrant",
 	SNAKESAYS_WEST    = "Press West quadrant",
 	SNAKESAYS_RESET   = "Reset sequence",
+	SNAKESAYS_UNDO    = "Take the last press back",
 }
 
 -- These are also the `/click` targets the group-sharing macros use (see
@@ -49,6 +57,7 @@ for _, dir in ipairs({ "N", "E", "S", "W" }) do
 		function() SnakeSays_Press(dir) end)
 end
 bindButton("SNAKESAYS_RESET", function() SnakeSays_Reset() end)
+bindButton("SNAKESAYS_UNDO", function() SnakeSays_Undo() end)
 
 -- AddOn Compartment button (the icon on the minimap compartment, see the .toc).
 -- Left-click opens options; right-click toggles the HUD.
@@ -79,6 +88,7 @@ local function help()
 	out("  /ss toggle     toggle the HUD")
 	out("  /ss lock | unlock")
 	out("  /ss reset      clear the recorded sequence")
+	out("  /ss undo       take the last press back (right-click the board too)")
 	out("  /ss sync       share the sequence with your group (`on` / `off`)")
 	out("  /ss macro      the macros that share your board with the group")
 	out("  /ss timeline   toggle the timeline bar (`on` / `off` to be explicit)")
@@ -124,8 +134,14 @@ local function statusCommand()
 
 
 	local voices = C_VoiceChat and C_VoiceChat.GetTtsVoices and C_VoiceChat.GetTtsVoices()
+	local active = ns.Announce.ActiveVoice()
 	out(("  voice: on=%s installed=%d volume=%d"):format(
 		yes(ns.GetTTSEnabled()), voices and #voices or 0, ns.GetTTSVolume()))
+	out(("    using: %s%s"):format(
+		ns.Announce.VoiceName(active) or ("id " .. tostring(active)),
+		ns.GetTTSVoice() == nil and " (chosen for you)" or " (you picked it)"))
+	out(("    DBM voice: wanted=%s available=%s"):format(
+		yes(ns.GetDBMVoice()), yes(ns.Announce.DBMVoiceAvailable())))
 end
 
 -- Handlers taking an argument get it as their first parameter; the rest ignore it.
@@ -155,6 +171,11 @@ local handlers = {
 	-- Both, because they are two runs: the board is this player's, and the staff
 	-- may also be carrying one heard in party chat. "Clear it" means both.
 	reset       = function() ns.Seq.Reset(); ns.Comms.Clear() end,
+	-- Only this client's board, and only its last press: the run heard in party
+	-- chat is somebody else's typing and cannot be un-typed.
+	undo        = function()
+		if not ns.Seq.Undo() then out("nothing on the board to take back.") end
+	end,
 	-- The addon cannot make these itself, and that is not an oversight: a button
 	-- an addon created is the addon acting however the click arrived, and the
 	-- client refuses it. A macro the player made is the player. So it prints them

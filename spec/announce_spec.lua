@@ -108,6 +108,271 @@ describe("voice calls", function()
 end)
 
 
+-- Which voice says it.
+--
+-- Voice ids number whatever the operating system installed, in whatever order it
+-- lists them, so an id is a position and not a voice. The addon shipped storing
+-- id 0 and calling that a default; on macOS position 0 lands in the novelty
+-- voices, and the author of Deadly Boss Mods reported it laughing at him once
+-- per wave instead of calling the colours.
+describe("choosing a voice", function()
+	local function installVoices(list)
+		_G.C_VoiceChat.GetTtsVoices = function() return list end
+	end
+
+	it("passes over a novelty voice for one that can say a word", function()
+		local ns = enc.setup()
+		installVoices({
+			{ voiceID = 0, name = "Hysterical" },
+			{ voiceID = 1, name = "Samantha" },
+		})
+
+		enc.recordRun(ns, RUN)
+		enc.echo(ns)
+
+		assert.equals(1, wow.spoken[1].voiceID)
+	end)
+
+	it("prefers a voice known to read clearly over merely the first that is not a joke",
+		function()
+			local ns = enc.setup()
+			installVoices({
+				{ voiceID = 0, name = "Bahh" },
+				{ voiceID = 1, name = "Ralph" },
+				{ voiceID = 2, name = "Alex" },
+			})
+
+			enc.recordRun(ns, RUN)
+			enc.echo(ns)
+
+			assert.equals(2, wow.spoken[1].voiceID)
+		end)
+
+	-- The client decorates the name differently per platform, so the joke voices
+	-- have to be recognised through it -- this is exactly how they arrive.
+	it("recognises a novelty voice through the decoration around its name", function()
+		local ns = enc.setup()
+		installVoices({
+			{ voiceID = 0, name = "Hysterical (English (United States))" },
+			{ voiceID = 1, name = "Microsoft David Desktop - English (United States)" },
+		})
+
+		enc.recordRun(ns, RUN)
+		enc.echo(ns)
+
+		assert.equals(1, wow.spoken[1].voiceID)
+	end)
+
+	-- Matched whole, not as a substring: "Organ" is a joke voice and "Morgan" is
+	-- not, and the second must not be thrown away with the first.
+	it("does not mistake a real voice for a joke one it happens to contain", function()
+		local ns = enc.setup()
+		installVoices({ { voiceID = 4, name = "Morgan" } })
+
+		enc.recordRun(ns, RUN)
+		enc.echo(ns)
+
+		assert.equals(4, wow.spoken[1].voiceID)
+	end)
+
+	it("speaks in a novelty voice rather than not at all, when that is all there is",
+		function()
+			local ns = enc.setup()
+			installVoices({ { voiceID = 3, name = "Zarvox" } })
+
+			enc.recordRun(ns, RUN)
+			enc.echo(ns)
+
+			assert.equals(3, wow.spoken[1].voiceID)
+		end)
+
+	-- A choice is a choice. The list the addon avoids is for picking on the
+	-- player's behalf, never for overruling them.
+	it("keeps a novelty voice the player picked on purpose", function()
+		local ns = enc.setup()
+		installVoices({
+			{ voiceID = 0, name = "Hysterical" },
+			{ voiceID = 1, name = "Samantha" },
+		})
+		ns.SetTTSVoice(0)
+
+		enc.recordRun(ns, RUN)
+		enc.echo(ns)
+
+		assert.equals(0, wow.spoken[1].voiceID)
+	end)
+
+	it("reports the voice it settled on, which is not the one stored", function()
+		local ns = enc.setup()
+		installVoices({
+			{ voiceID = 0, name = "Hysterical" },
+			{ voiceID = 6, name = "Samantha" },
+		})
+
+		assert.is_nil(ns.GetTTSVoice())
+		assert.equals(6, ns.Announce.ActiveVoice())
+		assert.equals("Samantha", ns.Announce.VoiceName(6))
+	end)
+
+	it("hands the whole list to the picker", function()
+		local ns = enc.setup()
+		assert.equals(2, #ns.Announce.Voices())
+	end)
+
+	it("round-trips a picked voice, and going back to automatic", function()
+		local ns = enc.setup()
+
+		ns.SetTTSVoice(1)
+		assert.equals(1, _G.SnakeSaysDB.ttsVoice)
+
+		ns.SetTTSVoice(nil)
+		assert.is_nil(_G.SnakeSaysDB.ttsVoice)
+		assert.is_nil(ns.GetTTSVoice())
+	end)
+
+	-- Every install before the picker existed was seeded with id 0, and there was
+	-- no way in the interface to have chosen it. Left alone it keeps whatever
+	-- position 0 happens to be, which is the bug.
+	it("clears a seeded id zero back to automatic on an old install", function()
+		local ns = enc.setup({ ttsVoice = 0 })
+		assert.is_nil(ns.GetTTSVoice())
+	end)
+
+	it("leaves a voice the player really did pick alone", function()
+		local ns = enc.setup({ ttsVoice = 1 })
+		assert.equals(1, ns.GetTTSVoice())
+	end)
+end)
+
+-- Deadly Boss Mods ships eight recordings, mm1 to mm8, one per raid target, that
+-- say "move to square" in the voice the rest of the pull is already called in.
+-- Borrowed rather than reimplemented, and only ever as an alternative to the
+-- client's text to speech.
+describe("Deadly Boss Mods' voice", function()
+	-- Default assignment: West is Cross, marker 7.
+	local WEST_CALL = "Interface\\AddOns\\DBM-VPVEM\\mm7.ogg"
+
+	it("plays the marker's call instead of speaking", function()
+		local ns = enc.setup({ dbmVoice = true })
+		wow.installDBM()
+
+		enc.recordRun(ns, RUN)
+		enc.echo(ns)
+
+		assert.same({ WEST_CALL }, wow.soundFiles())
+		assert.equals(0, #wow.spoken)
+	end)
+
+	it("follows a reassigned marker, since the file is the marker", function()
+		local ns = enc.setup({ dbmVoice = true })
+		wow.installDBM()
+		ns.SetAssignment("W", 4)          -- West becomes Triangle, marker 4
+
+		enc.recordRun(ns, RUN)
+		enc.echo(ns)
+
+		assert.same({ "Interface\\AddOns\\DBM-VPVEM\\mm4.ogg" }, wow.soundFiles())
+	end)
+
+	it("uses whichever voice pack DBM is set to", function()
+		local ns = enc.setup({ dbmVoice = true })
+		wow.installDBM({ pack = "Corsica" })
+
+		enc.recordRun(ns, RUN)
+		enc.echo(ns)
+
+		assert.same({ "Interface\\AddOns\\DBM-VPCorsica\\mm7.ogg" }, wow.soundFiles())
+	end)
+
+	it("is off unless asked for, even with DBM sitting right there", function()
+		local ns = enc.setup()
+		wow.installDBM()
+
+		enc.recordRun(ns, RUN)
+		enc.echo(ns)
+
+		assert.equals(0, #wow.sounds)
+		assert.same({ "Red" }, wow.spokenText())
+	end)
+
+	-- Ticking the box must never be a way to end up with silence. Every reason
+	-- DBM cannot answer falls back to the voice that was there before.
+	it("falls back to speaking when DBM is not installed at all", function()
+		local ns = enc.setup({ dbmVoice = true })
+
+		enc.recordRun(ns, RUN)
+		enc.echo(ns)
+
+		assert.same({ "Red" }, wow.spokenText())
+	end)
+
+	it("falls back to speaking when DBM has no voice pack chosen", function()
+		local ns = enc.setup({ dbmVoice = true })
+		wow.installDBM({ pack = "None" })
+
+		enc.recordRun(ns, RUN)
+		enc.echo(ns)
+
+		assert.equals(0, #wow.sounds)
+		assert.same({ "Red" }, wow.spokenText())
+	end)
+
+	-- A pack named in DBM's settings that has since been uninstalled builds a
+	-- path to a file that is not there. DBM lists what it really found; that list
+	-- is the check.
+	it("falls back to speaking when the chosen pack is no longer installed", function()
+		local ns = enc.setup({ dbmVoice = true })
+		wow.installDBM({ pack = "VEM", versions = {} })
+
+		enc.recordRun(ns, RUN)
+		enc.echo(ns)
+
+		assert.equals(0, #wow.sounds)
+		assert.same({ "Red" }, wow.spokenText())
+	end)
+
+	-- Which voice does the calling is a preference; whether anything calls at all
+	-- is the feature, and it has one switch.
+	it("stays silent when the voice is switched off altogether", function()
+		local ns = enc.setup({ dbmVoice = true, ttsEnabled = false })
+		wow.installDBM()
+
+		enc.recordRun(ns, RUN)
+		enc.echo(ns)
+
+		assert.equals(0, #wow.sounds)
+		assert.equals(0, #wow.spoken)
+	end)
+
+	it("says whether it can answer, which is what the options page reports", function()
+		local ns = enc.setup({ dbmVoice = true })
+		assert.is_false(ns.Announce.DBMVoiceAvailable())
+
+		wow.installDBM()
+		assert.is_true(ns.Announce.DBMVoiceAvailable())
+	end)
+
+	it("round-trips the setting through SavedVariables", function()
+		local ns = enc.setup()
+		assert.is_false(ns.GetDBMVoice())
+
+		ns.SetDBMVoice(true)
+		assert.is_true(_G.SnakeSaysDB.dbmVoice)
+	end)
+
+	-- The on-screen call still follows the announce style; the recording cannot.
+	it("keeps naming the marker even when the style says colours", function()
+		local ns = enc.setup({ dbmVoice = true, announceStyle = "color" })
+		wow.installDBM()
+
+		enc.recordRun(ns, RUN)
+		enc.echo(ns)
+
+		assert.same({ WEST_CALL }, wow.soundFiles())
+		assert.is_true(ns.Announce.PopupText():find("Red", 1, true) ~= nil)
+	end)
+end)
+
 describe("next-up popup", function()
 	it("shows the current colour large and the next one as a subtitle", function()
 		local ns = enc.setup()

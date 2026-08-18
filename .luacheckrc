@@ -25,6 +25,9 @@ read_globals = {
 	"IsInRaid", "GetFileIDFromPath",
 	"CreateMacro", "EditMacro", "GetMacroIndexByName",
 	"wipe", "strtrim",
+	-- Deadly Boss Mods, when the player has it: Announce plays the marker call
+	-- out of its voice pack. Every read of it is guarded -- see Announce.lua.
+	"DBM",
 }
 
 exclude_files = {

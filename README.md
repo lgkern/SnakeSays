@@ -49,6 +49,16 @@ defaults are:
 The sequence renders as a row of marker icons beneath the circle, and a
 **reset** button sits at the left of that row. Wedges flash as each wave goes on.
 
+**Misclicked? Right-click the board.** A right-click anywhere on the circle (or
+on the reset button) takes the last press back and leaves the rest of the run
+alone — it doesn't matter which wedge you hit, since the board only ever gives
+back its last entry. If you play on keybinds instead, bind *Take the last press
+back* in the settings, or use `/ss undo`.
+
+One thing it can't undo is a run you've already shared with your group: those
+lines are typed into party chat, and chat can't be un-typed. Followers keep the
+extra marker on their timeline.
+
 ## The Timeline
 
 A separate window, at the top of the screen by default shows the sequence being 
@@ -60,7 +70,8 @@ chain of events, so you can plan accordingly.
 When the boss starts repeating the run, SnakeSays calls each wave three ways:
 
 - **Voice**: one word per wave, the safe colour (*"Red"*) or the marker's name
-  (*"Cross"*), your choice. 
+  (*"Cross"*), your choice. Pick which text-to-speech voice says it in the
+  settings, or hand the job to **Deadly Boss Mods** — see [Voices](#voices).
 - **On-screen call**: the current quadrant large, with the next one beneath it
   so you can start moving early. Drag it anywhere; unlock the HUD to grab it.
 - **Timeline**: the scanning bar above, which is the one that tells you how long
@@ -119,9 +130,9 @@ that line, so it's the first thing to check when a pull produces no calls.
 - **Per-quadrant marker** - click one of the eight markers to assign it. Markers
   are unique across quadrants: choosing one that's already in use **swaps** the
   two, so you never end up with a duplicate.
-- **Keybinds** - one per quadrant, plus *Reset*. Click a key box and press the
-  combo (Esc cancels, right-click clears). These are real game bindings, set from
-  this page.
+- **Keybinds** - one per quadrant, plus *Reset sequence* and *Take the last press
+  back*. Click a key box and press the combo (Esc cancels, right-click clears).
+  These are real game bindings, set from this page.
 - **Show HUD** / **Lock HUD** - one lock for every window. Unlock to drag the
   board, the on-screen call and the timeline; lock again when they're placed.
 - **Auto-reset** - clears the sequence a set number of seconds after the *first*
@@ -131,8 +142,10 @@ that line, so it's the first thing to check when a pull produces no calls.
   the windows out in the world.
 - **Share the sequence with my group** - on by default. Watches for the leader's
   run in party chat. See [Leader Mode](#leader-mode).
-- **During the replay** - call things by colour or by marker, voice volume, 
-let calls overlap, on-screen call on/off, next-up line on/off, timeline on/off.
+- **During the replay** - which voice speaks the wave (or DBM's voice pack
+  instead — see [Voices](#voices)), call things by colour or by marker, voice
+  volume, let calls overlap, on-screen call on/off, next-up line on/off,
+  timeline on/off.
 - **Window size** - one slider each for the board, the on-screen call and the
   timeline, 50% to 200%. They're separate on purpose: the board is a click
   target, the call is read head-on, and the timeline is read from the corner of
@@ -152,6 +165,7 @@ let calls overlap, on-screen call on/off, next-up line on/off, timeline on/off.
 | `/ss show` · `/ss hide` · `/ss toggle` | show / hide the HUD |
 | `/ss lock` · `/ss unlock` | lock / unlock for dragging |
 | `/ss reset` | clear the recorded sequence |
+| `/ss undo` | take the last press back (or right-click the board) |
 | `/ss sync` | share the sequence with your group (`on` / `off` to be explicit) |
 | `/ss macro` | make (or update) the macros that share your board with the group |
 | `/ss timeline` | toggle the timeline (`on` / `off` to be explicit) |
