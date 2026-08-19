@@ -16,9 +16,11 @@ local _, ns = ...
 -- safe quarter. It needed to know where they were standing, which the client no
 -- longer says in here, so it is gone rather than left to fail silently.
 --
--- The voice goes through C_VoiceChat.SpeakText with the argument order and
--- voice-validation the community's raid addons settled on: an unknown stored
--- voice id silently falls back to 0 rather than failing to speak at all.
+-- The voice goes through C_VoiceChat.SpeakText. An id is a position in whatever
+-- language packs the player installed, so nothing here assumes one: a stored id
+-- the client no longer lists is picked over rather than handed on (AutoVoice),
+-- and a client that has stopped listing anything at all is answered from memory
+-- rather than with silence (resolveVoice).
 -- ===========================================================================
 
 local Announce = {}
@@ -81,9 +83,14 @@ local PREFERRED_VOICES = {
 
 -- Is `voiceID` one the client actually has? Voices depend on the player's
 -- installed language packs, so a stored id can vanish between sessions.
-local function voiceExists(voiceID)
+--
+-- `voices` is the list to check against, for callers that already asked the
+-- client for one. Asking again is not free of consequence: the answer changes
+-- between one call and the next (see resolveVoice), so a function that looks the
+-- list up twice can be told two different things inside one wave call.
+local function voiceExists(voiceID, voices)
 	if type(voiceID) ~= "number" then return false end
-	for _, voice in ipairs(installedVoices()) do
+	for _, voice in ipairs(voices or installedVoices()) do
 		if voice.voiceID == voiceID then return true end
 	end
 	return false
@@ -101,8 +108,8 @@ end
 -- So: a voice known to speak clearly, else any voice that is not a joke, else
 -- the first one there is. Only the last of those three can still be a novelty
 -- voice, and by then it is that or nothing.
-function Announce.AutoVoice()
-	local voices = installedVoices()
+function Announce.AutoVoice(voices)
+	voices = voices or installedVoices()
 	local firstSpeaking, firstAny
 
 	for _, voice in ipairs(voices) do
@@ -130,10 +137,11 @@ end
 -- still has it, and the addon's own choice otherwise. The options page and
 -- `/ss sound` both report this rather than the stored value, because a stored
 -- voice that has gone away is exactly the case worth being able to see.
-function Announce.ActiveVoice()
+function Announce.ActiveVoice(voices)
+	voices = voices or installedVoices()
 	local chosen = ns.GetTTSVoice()
-	if voiceExists(chosen) then return chosen end
-	return Announce.AutoVoice()
+	if voiceExists(chosen, voices) then return chosen end
+	return Announce.AutoVoice(voices)
 end
 
 -- The name to show for `voiceID`, or nil if the client does not have it.
@@ -144,16 +152,65 @@ function Announce.VoiceName(voiceID)
 	return nil
 end
 
+-- The last id that actually spoke. See resolveVoice.
+local lastGoodVoice
+
+-- The voice this call comes out in: the id, and whether it had to be remembered
+-- rather than looked up.
+--
+-- Announce.ActiveVoice asks the client afresh every time, which is right for the
+-- options page and `/ss sound` -- those report the truth of this moment. It is
+-- wrong for a wave call. GetTtsVoices belongs to the voice chat subsystem, and
+-- that subsystem re-initialises: on a group change, on zoning, on a voice
+-- session dropping. While it does, it lists nothing at all.
+--
+-- A wave call landing in one of those frames used to resolve to nil and never be
+-- spoken. From the chair that is the voice cutting out for a wave or three in
+-- the middle of a round, with the popup still updating beside it -- and it left
+-- nothing behind to find, which is how it outlived several reports of it.
+--
+-- An empty list is the only thing the remembered id covers. A list that comes
+-- back populated is the truth of the moment, so a stored voice missing from a
+-- populated list really has gone away and AutoVoice should pick over it as
+-- before.
+local function resolveVoice(voiceID)
+	local voices = installedVoices()
+	if #voices == 0 then return lastGoodVoice, true end
+	if voiceExists(voiceID, voices) then return voiceID, false end
+	return Announce.ActiveVoice(voices), false
+end
+
 -- `voiceID` overrides the one the player picked, for anything that has to be
 -- told apart from a wave call by ear alone.
+--
+-- Every road out of here that ends in silence says so under `/ss debug`. It used
+-- to have six of them and no voice: a wave that was never spoken looked, from
+-- the chair and from the log alike, exactly like a wave the detector never saw.
 function Announce.Say(text, voiceID)
 	if not ns.GetTTSEnabled() then return false end
-	if type(text) ~= "string" or text == "" then return false end
-	if issecretvalue and issecretvalue(text) then return false end
-	if not C_VoiceChat or not C_VoiceChat.SpeakText then return false end
+	if type(text) ~= "string" or text == "" then
+		ns.Trace("|cffff5555said nothing:|r there was no word to say (%s)", tostring(text))
+		return false
+	end
+	if issecretvalue and issecretvalue(text) then
+		ns.Trace("|cffff5555said nothing:|r the word came back secret")
+		return false
+	end
+	if not C_VoiceChat or not C_VoiceChat.SpeakText then
+		ns.Trace("|cffff5555said nothing:|r this client has no C_VoiceChat.SpeakText")
+		return false
+	end
 
-	if not voiceExists(voiceID) then voiceID = Announce.ActiveVoice() end
-	if not voiceID then return false end
+	local resolved, remembered = resolveVoice(voiceID)
+	if not resolved then
+		ns.Trace("|cffff5555said nothing:|r the client listed no voice to say \"%s\" in",
+			tostring(text))
+		return false
+	end
+	if remembered then
+		ns.Trace("the client listed no voices - saying \"%s\" in %s, the last one that worked",
+			tostring(text), tostring(resolved))
+	end
 
 	local rate = 0
 	if C_TTSSettings and C_TTSSettings.GetSpeechRate then
@@ -166,8 +223,17 @@ function Announce.Say(text, voiceID)
 	-- Enum.VoiceTtsDestination at all, and speaking with the newer order is
 	-- accepted without complaint and then silently says nothing. Both orders were
 	-- put to the ear side by side; this is the one that was audible.
-	return pcall(C_VoiceChat.SpeakText, voiceID, text, rate,
+	local ok, err = pcall(C_VoiceChat.SpeakText, resolved, text, rate,
 		ns.GetTTSVolume(), ns.GetTTSOverlap())
+	if not ok then
+		ns.Trace("|cffff5555the client refused to say \"%s\":|r %s", tostring(text), tostring(err))
+		return false
+	end
+
+	-- Proof this id speaks, and so the only thing worth falling back on when the
+	-- client stops listing voices part way through a round.
+	lastGoodVoice = resolved
+	return true
 end
 
 -- ---------------------------------------------------------------------------
@@ -242,7 +308,10 @@ end
 -- call still follows the style, so a player reading colours and hearing marks is
 -- a combination they can reach; it is theirs to choose.
 function Announce.Call(quadrant)
-	if not ns.GetTTSEnabled() then return false end
+	if not ns.GetTTSEnabled() then
+		ns.Trace("said nothing for %s: the voice is switched off", tostring(quadrant))
+		return false
+	end
 	if Announce.SayWithDBM(quadrant) then return true end
 	return Announce.Say(ns.QuadrantLabel(quadrant))
 end

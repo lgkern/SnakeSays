@@ -108,6 +108,79 @@ describe("voice calls", function()
 end)
 
 
+-- The client going quiet part way through a round.
+--
+-- GetTtsVoices belongs to the voice chat subsystem, and that subsystem
+-- re-initialises while a pull is running -- somebody joins the group, a voice
+-- session drops -- and lists nothing at all while it does. The voice used to go
+-- with it: the wave resolved to no voice and was never spoken, the popup carried
+-- on updating beside it, and nothing anywhere said why. It was reported from the
+-- field as the voice cutting out at random, mid-readback.
+describe("the client listing no voices mid-round", function()
+	local function installVoices(list)
+		_G.C_VoiceChat.GetTtsVoices = function() return list end
+	end
+
+	it("keeps calling in the voice that last worked", function()
+		local ns = enc.setup()
+		enc.recordRun(ns, RUN)
+
+		enc.echo(ns)                    -- spoken normally: voice 0 proves itself
+		installVoices({})               -- the subsystem goes away mid-round
+		enc.echo(ns); enc.echo(ns)
+
+		assert.same({ "Red", "Orange", "Blue" }, wow.spokenText())
+		assert.equals(0, wow.spoken[3].voiceID)
+	end)
+
+	it("picks the list back up when the client answers again", function()
+		local ns = enc.setup({ ttsVoice = 1 })
+		enc.recordRun(ns, RUN)
+
+		enc.echo(ns)
+		installVoices({})
+		enc.echo(ns)
+		installVoices({ { voiceID = 0, name = "Default" }, { voiceID = 1, name = "Alt" } })
+		enc.echo(ns)
+
+		assert.same({ 1, 1, 1 }, {
+			wow.spoken[1].voiceID, wow.spoken[2].voiceID, wow.spoken[3].voiceID,
+		})
+	end)
+
+	-- The remembered id covers an empty list and nothing else. A list that comes
+	-- back populated is the truth of the moment, so a voice that really has been
+	-- uninstalled must still be picked over rather than remembered past its life.
+	it("does not remember a voice the client has since dropped", function()
+		local ns = enc.setup({ ttsVoice = 1 })
+		enc.recordRun(ns, RUN)
+
+		enc.echo(ns)                                        -- voice 1 works
+		installVoices({ { voiceID = 4, name = "Karen" } })  -- 1 uninstalled
+		enc.echo(ns)
+
+		assert.equals(1, wow.spoken[1].voiceID)
+		assert.equals(4, wow.spoken[2].voiceID)
+	end)
+
+	-- Only speech proves a voice speaks. An id that resolved and was then refused
+	-- has proved nothing, and falling back to it later would be falling back to
+	-- the thing that was already failing.
+	it("never falls back to a voice that was refused rather than spoken", function()
+		local ns = enc.setup()
+		enc.recordRun(ns, RUN)
+
+		wow.speakError = "voice chat is not connected"
+		enc.echo(ns)
+		wow.speakError = nil
+		installVoices({})
+		enc.echo(ns)
+
+		assert.equals(0, #wow.spoken)
+	end)
+end)
+
+
 -- Which voice says it.
 --
 -- Voice ids number whatever the operating system installed, in whatever order it

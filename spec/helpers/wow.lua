@@ -56,6 +56,7 @@ local listeners      -- event -> { frame, ... }
 local allFrames      -- every frame created, for OnUpdate driving
 
 M.spoken = {}        -- { {voiceID, text, rate, volume, overlap}, ... }
+M.speakError = nil   -- set to a message to make SpeakText throw; see reset()
 M.sounds = {}        -- { soundFileOrKit, ... }
 M.chat = {}          -- printed lines
 M.bindings = {}      -- command -> key
@@ -507,6 +508,7 @@ function M.reset()
 	allFrames = {}
 
 	M.spoken = {}
+	M.speakError = nil
 	M.sounds = {}
 	M.chat = {}
 	M.bindings = {}
@@ -744,7 +746,11 @@ function M.reset()
 		-- third, then volume, then overlap. Newer clients grew a `destination`
 		-- argument in the rate's slot; this one has no VoiceTtsDestination enum
 		-- at all, and speaking with that order is accepted and then silent.
+		-- M.speakError makes the client refuse, the way it does when the voice
+		-- chat subsystem is between sessions. The addon pcalls this, so without a
+		-- seam the whole failure branch is unreachable from a test.
 		SpeakText = function(voiceID, text, rate, volume, overlap)
+			if M.speakError then error(M.speakError, 0) end
 			table.insert(M.spoken, {
 				voiceID = voiceID, text = text,
 				rate = rate, volume = volume, overlap = overlap,
