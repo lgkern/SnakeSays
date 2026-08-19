@@ -55,7 +55,45 @@ local function cancelAutoReset()
 	end
 end
 
-local function append(quadrant, armAutoReset)
+-- The safety net: a board the player filled in and then walked away from clears
+-- itself, so the next pull does not start on top of the last one's run.
+--
+-- Declared ahead of itself because it re-arms itself; see below.
+local armAutoReset
+
+armAutoReset = function()
+	if not ns.GetAutoReset() or not C_Timer then return end
+	cancelAutoReset()
+	autoTimer = C_Timer.NewTimer(ns.GetAutoResetTime(), function()
+		autoTimer = nil
+		if not ns.GetAutoReset() then return end   -- re-check: may be off now
+
+		-- Never while the run is being called back. The net is for a board left
+		-- lying around between pulls; a board being read back is the opposite of
+		-- that, and the one moment the run is actually being used.
+		--
+		-- Forty seconds sounds like room to spare and is not. It is anchored to
+		-- the first press and never slides forward, and a seven-wave hard round
+		-- spends twenty-one seconds showing the run and twenty-five more calling
+		-- it. So the net closed over the last wave or two of the longest rounds
+		-- -- the ones worth having -- and the voice and the popup stopped dead
+		-- mid-readback while the detector carried on stepping past an empty
+		-- board. It was reported from the field as the voice cutting out at
+		-- random, and it read that way in the log too: the only sign of it was
+		-- `board has 0` on the call that went unannounced.
+		--
+		-- Deferred rather than cancelled. A board still wants clearing once
+		-- nobody is reading it, so the net re-arms and comes back around.
+		if ns.Detector and ns.Detector.IsReplaying() then
+			armAutoReset()
+			return
+		end
+
+		Seq.Reset()
+	end)
+end
+
+local function append(quadrant, withAutoReset)
 	if not ns.QUADRANT_NAME[quadrant] then return false end
 	if #list >= MAX then return false end
 	local wasEmpty = (#list == 0)
@@ -64,13 +102,7 @@ local function append(quadrant, armAutoReset)
 	changed()
 	-- Auto-reset is anchored to the FIRST press of a sequence (it does not slide
 	-- forward on later presses), so we only arm it on the empty -> first press.
-	if armAutoReset and wasEmpty and ns.GetAutoReset() and C_Timer then
-		cancelAutoReset()
-		autoTimer = C_Timer.NewTimer(ns.GetAutoResetTime(), function()
-			autoTimer = nil
-			if ns.GetAutoReset() then Seq.Reset() end   -- re-check: may be off now
-		end)
-	end
+	if withAutoReset and wasEmpty then armAutoReset() end
 	return true
 end
 

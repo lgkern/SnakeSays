@@ -543,3 +543,53 @@ describe("announce settings", function()
 		assert.equals("color", ns.GetAnnounceStyle())
 	end)
 end)
+
+
+-- Reported from the field: the voice cuts out part way through the readback,
+-- most often on the last wave, and the player walks into it. The debug log from
+-- the pull that pinned it down:
+--
+--     step 6 of 7: now W, next N
+--     echo from boss1, identified by unreadable
+--     call 7 from boss1, wave lands in 3.00s ..., board has 0
+--
+-- Board has 0. Nothing was wrong with the voice at all -- the run had been wiped
+-- out from under it between the sixth call and the seventh.
+--
+-- The auto-reset is armed on the first press and anchored there, never sliding
+-- forward (Sequence.lua). On a seven-wave hard round the showing half runs
+-- 21s and the calling half another 25s, so the fortieth second lands in the
+-- middle of the readback -- on the last wave or two, which are the ones worth
+-- having.
+describe("the auto-reset against a long round", function()
+	local LONG = { "N", "E", "S", "W", "N", "E", "S" }
+	local WORDS = { "Orange", "Purple", "Blue", "Red", "Orange", "Purple", "Blue" }
+
+	it("calls all seven waves of a hard round back", function()
+		local ns = enc.ready()
+		enc.pull(ns, enc.HARD)
+		enc.round(ns, LONG, { length = enc.SLOT[enc.HARD] * #LONG,
+			castTime = enc.CAST.hardSlow })
+
+		assert.same(WORDS, wow.spokenText())
+	end)
+
+	it("still has the run on the board when the last wave is called", function()
+		local ns = enc.ready()
+		enc.pull(ns, enc.HARD)
+		enc.round(ns, LONG, { length = enc.SLOT[enc.HARD] * #LONG,
+			castTime = enc.CAST.hardSlow })
+
+		assert.equals(#LONG, ns.Seq.Count())
+	end)
+
+	-- The safety net still has to work. It is there for a run left lying around
+	-- between pulls, and that run must still go away on its own.
+	it("clears a board nobody is reading back", function()
+		local ns = enc.ready()
+		ns.Seq.Press("N")
+		wow.advance(ns.GetAutoResetTime() + 1)
+
+		assert.equals(0, ns.Seq.Count())
+	end)
+end)
