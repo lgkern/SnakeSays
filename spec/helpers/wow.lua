@@ -194,6 +194,24 @@ function frameProto:GetRotation() return self._rotation or 0 end
 function frameProto:SetScale(s) self._scale = s end
 function frameProto:GetScale() return self._scale or 1 end
 
+-- What the board divides the cursor by. Real, not stubbed at 1: the board reads
+-- the cursor in screen pixels and its own geometry in board pixels, and the
+-- scale is the only thing between them -- a mock that always says 1 cannot see
+-- a scaled board mis-reading a press.
+function frameProto:GetEffectiveScale()
+	local scale, parent = self:GetScale(), self._parent
+	while parent do
+		scale = scale * (parent.GetScale and parent:GetScale() or 1)
+		parent = parent._parent
+	end
+	return scale
+end
+
+-- Frames here have no layout, so every frame is centred on the origin. That is
+-- what makes M.setCursor readable: the coordinates a test sets are the offsets
+-- from the centre of the board that the addon will work with.
+function frameProto:GetCenter() return 0, 0 end
+
 -- The options page is a scroll frame now, because it is taller than the canvas
 -- the Settings panel hands out on a good many screens. The offset is kept for
 -- real (rather than stubbed) so the code that clamps it has a number to work
@@ -296,6 +314,13 @@ function M.fire(event, ...)
 		local fn = frame._scripts.OnEvent
 		if fn then fn(frame, event, ...) end
 	end
+end
+
+-- Put the cursor somewhere, in screen pixels. Frames are centred on the origin
+-- here (see GetCenter), so at scale 1 these are offsets from the middle of the
+-- board: setCursor(-34, 6) is a little left of centre and a little above it.
+function M.setCursor(x, y)
+	M.cursor = { x, y }
 end
 
 -- Move the clock forward, running any timers that come due and driving OnUpdate
@@ -488,6 +513,7 @@ function M.reset()
 	M.popups = {}
 	M.position = { 0, 0, 0, 0 }
 	M.facing = 0
+	M.cursor = { 0, 0 }     -- screen pixels; see M.setCursor
 	M.instanceMapID = 0
 	M.zoneText = ""
 	M.uiMapID = 0
@@ -552,6 +578,7 @@ function M.reset()
 	_G.GameTooltip.AddDoubleLine = function() end
 
 	_G.GetTime = function() return clock end
+	_G.GetCursorPosition = function() return M.cursor[1], M.cursor[2] end
 
 	_G.C_Timer = {
 		After = function(delay, fn)

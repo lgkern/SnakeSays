@@ -11,6 +11,7 @@ read_globals = {
 	"C_Timer", "C_Map", "C_VoiceChat", "C_TTSSettings", "C_UnitAuras",
 	"Settings", "SOUNDKIT",
 	"GetTime", "GetInstanceInfo", "GetZoneText",
+	"GetCursorPosition",
 	"UnitPosition", "GetPlayerFacing", "UnitCanAttack", "issecretvalue",
 	"UnitGUID", "UnitCastingInfo", "UnitExists",
 	"UnitName", "UnitHealth", "UnitHealthMax", "UnitChannelInfo",

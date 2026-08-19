@@ -11,9 +11,17 @@ local addonName, ns = ...
 -- works while in combat.
 --
 -- Wedge shapes come from pre-oriented art (Media/wedge-{n,e,s,w}.tga, white so
--- we can vertex-colour them). Buttons are rectangular, so each wedge's clickable
--- area is trimmed with hit-rect insets toward the wedge body; the diagonal seams
--- have a small dead zone, which is fine for a click target.
+-- we can vertex-colour them). A single button covers the circle and works out
+-- which wedge the cursor is over from its offset to the centre -- see
+-- HUD.DirectionAt, which is the predicate the art itself was drawn from, so the
+-- area that answers a click is the area that is coloured.
+--
+-- It used to be four buttons, each a full-circle rectangle trimmed to its wedge
+-- with hit-rect insets. Rectangles cannot tile a disc into sectors: adjacent
+-- boxes overlapped across a fifth of the board -- whichever button was on top
+-- took the press, which beside a seam was the wrong one -- and the outer part of
+-- every diagonal answered to nobody. Reported from the field as marking the
+-- wrong colour, which it was.
 --
 -- Built at PLAYER_LOGIN so requiring this file headless never touches in-game
 -- frame APIs.
@@ -35,22 +43,26 @@ local ROW_GAP    = 8
 -- Where the run starts in the row: after the reset button.
 local SEQ_START = RESET_SIZE + SEQ_GAP * 2
 
-
--- Clickable-area insets per wedge (fractions of CIRCLE), biasing each button to
--- the body of its own wedge so neighbouring wedges don't steal the click.
-local SIDE  = 0.26
-local INNER = 0.54
-
 local WEDGES = {
-	N = { file = "wedge-n", point = "TOP",    ox =  0, oy = -24, insets = { SIDE, SIDE, 0,     INNER } },
-	E = { file = "wedge-e", point = "RIGHT",  ox = -24, oy =  0, insets = { INNER, 0,    SIDE,  SIDE  } },
-	S = { file = "wedge-s", point = "BOTTOM", ox =  0, oy =  24, insets = { SIDE, SIDE, INNER, 0     } },
-	W = { file = "wedge-w", point = "LEFT",   ox =  24, oy =  0, insets = { 0,    INNER, SIDE,  SIDE  } },
+	N = { file = "wedge-n", point = "TOP",    ox =  0, oy = -24 },
+	E = { file = "wedge-e", point = "RIGHT",  ox = -24, oy =  0 },
+	S = { file = "wedge-s", point = "BOTTOM", ox =  0, oy =  24 },
+	W = { file = "wedge-w", point = "LEFT",   ox =  24, oy =  0 },
 }
 
-local frame, circle, row
-local buttons = {}     -- dir -> wedge button
+-- Where the paint actually is, taken from the numbers the art was generated
+-- with (tools/gen_wedge.py: a 256px texture, OUTER_R 125, INNER_R 18, measured
+-- from a half-size of 128) and scaled to the size it is drawn at. Hit-testing
+-- against these rather than against the frame means a click just past the rim,
+-- or in the hub hole, is not a press: there is nothing there to press.
+local ART_HALF = 128
+local RADIUS   = CIRCLE / 2 * (125 / ART_HALF)   -- outer edge of the paint
+local HUB      = CIRCLE / 2 * (18 / ART_HALF)    -- the hole in the middle
+
+local frame, circle, row, board
+local buttons = {}     -- dir -> { wedge, icon, colour } for one direction
 local seqIcons = {}    -- pooled sequence-row textures
+local hovered          -- dir currently lit by the cursor, nil when it is away
 
 -- ---------------------------------------------------------------------------
 -- Marker helpers
@@ -70,60 +82,134 @@ local function paintWedge(b, highlight)
 end
 
 -- ---------------------------------------------------------------------------
+-- Hit-testing
+-- ---------------------------------------------------------------------------
+
+-- Which wedge covers the point (dx, dy) offset from the centre of the circle,
+-- in board pixels with y pointing up; nil for the hub hole and for anything
+-- past the rim, where there is no wedge to press.
+--
+-- Pure, and deliberately so: this is the one piece of the board's behaviour a
+-- player can be made to get wrong in a fight, and it can be proven headlessly
+-- over every point of the circle rather than trusted.
+--
+-- The diagonal seams the art leaves as a narrow transparent gap are not dead
+-- here. A band that swallows presses is worse in a fight than a boundary that
+-- answers consistently, so a point in a seam goes to the wedge whose side of it
+-- it is on, and a point exactly on the diagonal goes to N/S.
+function HUD.DirectionAt(dx, dy)
+	local r2 = dx * dx + dy * dy
+	if r2 > RADIUS * RADIUS or r2 < HUB * HUB then return nil end
+	if math.abs(dy) >= math.abs(dx) then
+		return dy > 0 and "N" or "S"
+	end
+	return dx > 0 and "E" or "W"
+end
+
+-- The cursor's offset from the centre of the circle, in board pixels. The
+-- cursor comes back in screen pixels, so it is the frame's effective scale --
+-- the player's board scale times the UI scale -- that puts the two in the same
+-- units; without that division a scaled board reads every press off-centre.
+local function cursorOffset()
+	local cx, cy = circle:GetCenter()
+	local scale = circle:GetEffectiveScale()
+	if not cx or not scale or scale == 0 then return nil end
+	local mx, my = GetCursorPosition()
+	return mx / scale - cx, my / scale - cy
+end
+
+local function dirUnderCursor()
+	local dx, dy = cursorOffset()
+	if not dx then return nil end
+	return HUD.DirectionAt(dx, dy)
+end
+
+-- ---------------------------------------------------------------------------
 -- Build
 -- ---------------------------------------------------------------------------
 
+-- A wedge is now paint and an icon; the pressing is the board's job.
 local function buildWedge(dir, def)
-	-- Named so it can be looked at from a `/run` line: this is the one part of
-	-- the addon whose behaviour cannot be reproduced headlessly.
-	local b = CreateFrame("Button", "SnakeSaysWedge" .. dir, circle)
-	b:SetAllPoints(circle)
+	local b = {}
 
-	local wedge = b:CreateTexture(nil, "ARTWORK")
+	local wedge = board:CreateTexture(nil, "ARTWORK")
 	wedge:SetTexture(MEDIA .. def.file .. ".tga")
-	wedge:SetAllPoints(b)
+	wedge:SetAllPoints(board)
 	b.wedge = wedge
 
-	local icon = b:CreateTexture(nil, "OVERLAY")
+	local icon = board:CreateTexture(nil, "OVERLAY")
 	icon:SetSize(30, 30)
-	icon:SetPoint(def.point, b, def.point, def.ox, def.oy)
+	icon:SetPoint(def.point, board, def.point, def.ox, def.oy)
 	b.icon = icon
 
-	b:SetHitRectInsets(
-		def.insets[1] * CIRCLE, def.insets[2] * CIRCLE,
-		def.insets[3] * CIRCLE, def.insets[4] * CIRCLE)
+	buttons[dir] = b
+end
 
-	-- Right-click undoes, and it is on every wedge rather than on one button of
-	-- its own: a misclick is noticed a fraction of a second after it happens, with
-	-- the cursor still on the circle, and the fix has to be where the hand already
-	-- is. Which wedge is right-clicked does not matter -- the board only ever gives
-	-- back its last press.
-	b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-	b:SetScript("OnClick", function(_, mouseButton)
-		-- Traced before anything else: "the wedge did nothing" and "the click
-		-- never reached the wedge" are different problems with the same symptom,
-		-- and only this line tells them apart.
-		ns.Trace("wedge %s %s-clicked%s", dir, mouseButton == "RightButton" and "right" or "left",
+-- Light the wedge under the cursor, and only that one. Called as the cursor
+-- moves, so it does nothing at all until the answer changes.
+local function hover(dir)
+	if dir == hovered then return end
+	if hovered then paintWedge(buttons[hovered]) end
+	hovered = dir
+	if not dir then
+		GameTooltip:Hide()
+		return
+	end
+	paintWedge(buttons[dir], true)
+	GameTooltip:SetOwner(board, "ANCHOR_TOP")
+	GameTooltip:SetText(ns.QUADRANT_NAME[dir])
+	GameTooltip:AddLine("Right-click takes the last press back.", 0.7, 0.7, 0.7)
+	GameTooltip:Show()
+end
+
+-- One button for all four wedges, which is what lets a wedge be a wedge: the
+-- shape is decided in DirectionAt, not by the rectangle that took the click.
+local function buildBoard()
+	-- Named so it can be looked at from a `/run` line: this is the one part of
+	-- the addon whose behaviour cannot be reproduced headlessly.
+	board = CreateFrame("Button", "SnakeSaysBoard", circle)
+	board:SetAllPoints(circle)
+
+	-- Right-click undoes wherever it lands on the board, wedge or not: a misclick
+	-- is noticed a fraction of a second after it happens, with the cursor still on
+	-- the circle, and the fix has to be where the hand already is. Where exactly
+	-- does not matter -- the board only ever gives back its last press.
+	board:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+	board:SetScript("OnClick", function(_, mouseButton)
+		local dir = dirUnderCursor()
+		-- Traced before anything else: "the board did nothing" and "the click
+		-- never reached the board" are different problems with the same symptom,
+		-- and only this line tells them apart. The direction is in it because a
+		-- press landing on the wrong wedge is a third one.
+		ns.Trace("board %s-clicked over %s%s", mouseButton == "RightButton" and "right" or "left",
+			dir or "nothing",
 			InCombatLockdown and InCombatLockdown() and " (in combat)" or "")
 		if mouseButton == "RightButton" then
 			ns.Seq.Undo()
-		elseif ns.Seq.Press(dir) then
+		elseif dir and ns.Seq.Press(dir) then
 			HUD.Flash(dir)
 		end
 	end)
-	b:SetScript("OnEnter", function()
-		paintWedge(b, true)
-		GameTooltip:SetOwner(b, "ANCHOR_TOP")
-		GameTooltip:SetText(ns.QUADRANT_NAME[dir])
-		GameTooltip:AddLine("Right-click takes the last press back.", 0.7, 0.7, 0.7)
-		GameTooltip:Show()
-	end)
-	b:SetScript("OnLeave", function()
-		paintWedge(b)
-		GameTooltip:Hide()
-	end)
 
-	buttons[dir] = b
+	-- The cursor can cross a seam without ever leaving the button, so the
+	-- highlight has to follow it while it is inside. The watcher runs only
+	-- between enter and leave -- the same shape as the mover's drag watchdog
+	-- below, and for the same reason: nothing ticks when nothing is happening.
+	local function track() hover(dirUnderCursor()) end
+	board:SetScript("OnEnter", function(self)
+		self:SetScript("OnUpdate", track)
+		track()
+	end)
+	board:SetScript("OnLeave", function(self)
+		self:SetScript("OnUpdate", nil)
+		hover(nil)
+	end)
+	-- A board hidden under the cursor never gets its OnLeave, and would come back
+	-- with a wedge still lit.
+	board:SetScript("OnHide", function(self)
+		self:SetScript("OnUpdate", nil)
+		hover(nil)
+	end)
 end
 
 local function buildResetButton()
@@ -242,6 +328,7 @@ local function build()
 	row:SetSize(width - PAD * 2, SEQ_ICON)
 	row:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -(MOVER_H + 4 + CIRCLE + ROW_GAP))
 
+	buildBoard()
 	for _, dir in ipairs(ns.QUADRANTS) do
 		buildWedge(dir, WEDGES[dir])
 	end
@@ -304,7 +391,7 @@ function HUD.Flash(dir)
 	b.wedge:SetVertexColor(1, 1, 1, 1)
 	if b.flashTimer then b.flashTimer:Cancel() end
 	b.flashTimer = C_Timer.NewTimer(0.16, function()
-		paintWedge(b)
+		paintWedge(b, hovered == dir)
 		b.flashTimer = nil
 	end)
 end
@@ -336,12 +423,11 @@ end
 -- click handler being wrong -- and the two are indistinguishable from the chair.
 function HUD.Describe()
 	if not frame then return "not built" end
-	local wedge = buttons.N
-	return ("strata=%s level=%d mouse=%s wedge-mouse=%s wedge-enabled=%s"):format(
+	return ("strata=%s level=%d mouse=%s board-mouse=%s board-enabled=%s"):format(
 		frame:GetFrameStrata() or "?", frame:GetFrameLevel() or 0,
 		tostring(frame:IsMouseEnabled()),
-		wedge and tostring(wedge:IsMouseEnabled()) or "?",
-		wedge and tostring(wedge:IsEnabled()) or "?")
+		board and tostring(board:IsMouseEnabled()) or "?",
+		board and tostring(board:IsEnabled()) or "?")
 end
 
 -- The player's chosen board size. Scaling the whole frame keeps the wedges,

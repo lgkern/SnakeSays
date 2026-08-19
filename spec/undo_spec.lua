@@ -86,26 +86,40 @@ describe("asking for it", function()
 		local ns = addon.boot()
 		press(ns, "N", "E")
 
-		_G.SnakeSaysWedgeS:Run("OnClick", "RightButton")
+		wow.setCursor(0, 40)
+		_G.SnakeSaysBoard:Run("OnClick", "RightButton")
 
 		assert.same({ "N" }, ns.Seq.Get())
 	end)
 
-	-- Which wedge is right-clicked must not matter, and must certainly not
-	-- record: the cursor is wherever the misclick left it.
+	-- Where on the board the right-click lands must not matter, and must
+	-- certainly not record: the cursor is wherever the misclick left it. Even
+	-- the hub hole, which no left-click can press, still gives a press back.
 	it("right-clicking never records the wedge it was clicked on", function()
 		local ns = addon.boot()
 		press(ns, "N")
 
-		_G.SnakeSaysWedgeE:Run("OnClick", "RightButton")
+		wow.setCursor(40, 0)
+		_G.SnakeSaysBoard:Run("OnClick", "RightButton")
 
 		assert.equals(0, ns.Seq.Count())
+	end)
+
+	it("right-clicking the hub hole still takes the last press back", function()
+		local ns = addon.boot()
+		press(ns, "N", "E")
+
+		wow.setCursor(0, 0)
+		_G.SnakeSaysBoard:Run("OnClick", "RightButton")
+
+		assert.same({ "N" }, ns.Seq.Get())
 	end)
 
 	it("left-clicking still records, as it always did", function()
 		local ns = addon.boot()
 
-		_G.SnakeSaysWedgeE:Run("OnClick", "LeftButton")
+		wow.setCursor(40, 0)
+		_G.SnakeSaysBoard:Run("OnClick", "LeftButton")
 
 		assert.same({ "E" }, ns.Seq.Get())
 	end)
