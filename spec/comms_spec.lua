@@ -280,6 +280,51 @@ describe("group sync over party chat", function()
 			assert.equals(2, #ns.Comms.Heard())
 		end)
 
+		-- Reported from the field, from a `/ss debug` log taken in a city: every
+		-- line of the evening's party chat came through the addon to be traced and
+		-- then ignored. Nothing was read -- there is no pull outside the delve --
+		-- but the addon should not be on the other end of that conversation at all.
+		it("is not even hooked to chat outside the delve", function()
+			local ns = inGroup()
+			enc.leaveDelve()
+
+			local reached = 0
+			local receive = ns.Comms.ReceiveChat
+			ns.Comms.ReceiveChat = function(...)
+				reached = reached + 1
+				return receive(...)
+			end
+
+			say("Guildie-Realm", "just chatting")
+
+			assert.equals(0, reached)
+		end)
+
+		it("hooks chat again on walking back into the delve", function()
+			local ns = inGroup()
+			enc.leaveDelve()
+			enc.inDelve(ns)
+			enc.pull(ns, enc.HARD)
+
+			say("Caller-Realm", "N")
+
+			assert.equals(1, #ns.Comms.Heard())
+		end)
+
+		-- The zone event lands a moment after the loading screen, so a line can
+		-- still arrive on a frame that is on its way to being unhooked.
+		it("takes nothing from a line that beats the zone event out", function()
+			local ns = roundStarts(inGroup())
+
+			wow.instanceMapID = 0
+			wow.zoneText = "Dornogal"
+			wow.uiMapID = 0
+
+			say("Caller-Realm", "N")
+
+			assert.equals(0, #ns.Comms.Heard())
+		end)
+
 		it("is cleared by hand with /ss reset", function()
 			local ns = roundStarts(inGroup())
 			say("Caller-Realm", "2")

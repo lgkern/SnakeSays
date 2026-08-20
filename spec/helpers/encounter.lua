@@ -43,6 +43,14 @@ function M.inDelve(ns)
 	wow.fire("ZONE_CHANGED_NEW_AREA")
 end
 
+-- Walk back out, to somewhere the addon has no business in.
+function M.leaveDelve()
+	wow.instanceMapID = 0
+	wow.zoneText = "Dornogal"
+	wow.uiMapID = 0
+	wow.fire("ZONE_CHANGED_NEW_AREA")
+end
+
 -- Boot the addon, standing in the delve with the boss units to hand.
 function M.setup(extraDB)
 	local db = {}

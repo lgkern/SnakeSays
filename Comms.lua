@@ -278,6 +278,14 @@ function Comms.ReceiveChat(text, fromLeader)
 		ns.Trace("  ignored: group sync is off")
 		return false
 	end
+	-- Belt and braces with the registration below, which is what actually keeps
+	-- the addon out of the guild's conversation: the events are only hooked
+	-- inside the delve. This catches the line that arrives between walking out
+	-- and the zone event landing.
+	if not ns.InDelve() then
+		ns.Trace("  ignored: not in the delve")
+		return false
+	end
 	if not listening then
 		ns.Trace("  ignored: no encounter is up")
 		return false
@@ -330,14 +338,52 @@ end
 
 local LEADER_CHAT = { CHAT_MSG_PARTY_LEADER = true, CHAT_MSG_RAID_LEADER = true }
 
-local boot = CreateFrame("Frame")
-for _, event in ipairs({
+local CHAT_EVENTS = {
 	"CHAT_MSG_PARTY", "CHAT_MSG_PARTY_LEADER", "CHAT_MSG_RAID", "CHAT_MSG_RAID_LEADER",
+}
+
+local boot = CreateFrame("Frame")
+
+-- Hooked only inside the delve, and unhooked on the way out.
+--
+-- Registered for the whole session first, which was wrong in a way that only
+-- showed up under `/ss debug`: every line of guild and party chat anywhere in
+-- the world came through here to be traced and then ignored. Nothing was ever
+-- read -- `listening` is false outside a pull -- but the addon has no business
+-- being on the other end of a conversation it is not part of, and the trace
+-- said so, one line per message, all evening.
+--
+-- Same fence the HUD and the timeline already use (ns.InDelve), so all three
+-- appear and disappear together.
+local hooked = false
+
+local function applyChatEvents()
+	local want = ns.InDelve()
+	if want == hooked then return end
+	hooked = want
+	for _, event in ipairs(CHAT_EVENTS) do
+		if want then boot:RegisterEvent(event) else boot:UnregisterEvent(event) end
+	end
+	ns.Trace("party chat %s", want and "hooked" or "unhooked (outside the delve)")
+	-- Walking out ends the pull as far as this file is concerned; what was heard
+	-- belongs to a run nobody is looking at any more.
+	if not want then clearHeard() end
+end
+
+for _, event in ipairs({
+	"PLAYER_LOGIN", "PLAYER_ENTERING_WORLD",
+	"ZONE_CHANGED_NEW_AREA", "ZONE_CHANGED", "ZONE_CHANGED_INDOORS",
 }) do
 	boot:RegisterEvent(event)
 end
 
 boot:SetScript("OnEvent", function(_, event, ...)
+	-- Zone events, which is everything that is not a line of chat.
+	if event:sub(1, 9) ~= "CHAT_MSG_" then
+		applyChatEvents()
+		return
+	end
+
 	local text = ...
 	-- The sender is not printed, because printing it means touching it.
 	ns.Trace("%s", event)
