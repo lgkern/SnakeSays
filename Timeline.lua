@@ -57,6 +57,7 @@ local UPCOMING_ALPHA = 0.4
 local REST_ALPHA     = 0.22
 
 local frame, strip, track, bar, hint
+local background       -- the dark panel behind the staff; its alpha is a setting
 local heardText = {}   -- pooled font strings for a run called over party chat
 local heardLines = {}  -- the lines themselves, still secret, never read
 local heardCount = 0
@@ -216,9 +217,9 @@ local function build()
 	frame:SetFrameStrata("MEDIUM")
 	frame:Hide()
 
-	local bg = frame:CreateTexture(nil, "BACKGROUND")
-	bg:SetAllPoints(frame)
-	bg:SetColorTexture(0.04, 0.04, 0.05, 0.55)
+	background = frame:CreateTexture(nil, "BACKGROUND")
+	background:SetAllPoints(frame)
+	Timeline.ApplyBackgroundAlpha()
 
 	buildStrip()
 
@@ -547,6 +548,14 @@ function Timeline.ApplyScale()
 	frame:SetScale(ns.GetTimelineScale())
 end
 
+-- The panel behind the staff, at whatever solidity the player asked for. Only
+-- the texture thins out; fading the frame would take the slots and the playhead
+-- with it.
+function Timeline.ApplyBackgroundAlpha()
+	if not background then return end
+	background:SetColorTexture(0.04, 0.04, 0.05, ns.GetTimelineBackgroundAlpha())
+end
+
 function Timeline.ApplyLock()
 	if not frame then return end
 	local locked = ns.IsLocked()
@@ -579,6 +588,7 @@ end
 
 -- Test seams / external readers.
 function Timeline.GetFrame() return frame end
+function Timeline.GetBackground() return background end
 function Timeline.IsVisible() return frame ~= nil and frame:IsShown() end
 
 function Timeline.SlotCount()

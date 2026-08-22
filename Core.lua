@@ -106,6 +106,13 @@ local DEFAULTS = {
 	hudScale = 1,
 	popupScale = 1,
 	timelineScale = 1,
+
+	-- How solid the dark panel behind each window is, as the texture's alpha:
+	-- 0 = the window floats with nothing behind it, 1 = the panel is opaque.
+	-- Seeded with the values both windows shipped with, so an install that never
+	-- touches the sliders looks exactly as it did.
+	hudBackgroundAlpha = 0.35,
+	timelineBackgroundAlpha = 0.55,
 }
 
 -- Lazy DB resolver (the SV-timing rule above). Safe to call any time after
@@ -395,6 +402,36 @@ function ns.SetTimelineScale(v)
 	if ns.Timeline then ns.Timeline.ApplyScale() end
 end
 
+-- Background opacity, one per window. Stored as the alpha the texture wants, so
+-- the slider value and what is drawn are the same number.
+function ns.ClampAlpha(v)
+	v = tonumber(v)
+	if not v then return 0 end
+	if v < 0 then return 0 end
+	if v > 1 then return 1 end
+	return v
+end
+
+function ns.GetHUDBackgroundAlpha()
+	local v = db().hudBackgroundAlpha
+	if v == nil then return DEFAULTS.hudBackgroundAlpha end
+	return ns.ClampAlpha(v)
+end
+function ns.SetHUDBackgroundAlpha(v)
+	db().hudBackgroundAlpha = ns.ClampAlpha(v)
+	if ns.HUD then ns.HUD.ApplyBackgroundAlpha() end
+end
+
+function ns.GetTimelineBackgroundAlpha()
+	local v = db().timelineBackgroundAlpha
+	if v == nil then return DEFAULTS.timelineBackgroundAlpha end
+	return ns.ClampAlpha(v)
+end
+function ns.SetTimelineBackgroundAlpha(v)
+	db().timelineBackgroundAlpha = ns.ClampAlpha(v)
+	if ns.Timeline then ns.Timeline.ApplyBackgroundAlpha() end
+end
+
 function ns.GetTimelineEnabled()
 	local v = db().timelineEnabled
 	if v == nil then return DEFAULTS.timelineEnabled end
@@ -487,6 +524,12 @@ boot:SetScript("OnEvent", function(_, _, name)
 	d.announceStyle = d.announceStyle or DEFAULTS.announceStyle
 	for _, key in ipairs({ "hudScale", "popupScale", "timelineScale" }) do
 		d[key] = ns.ClampScale(d[key] or DEFAULTS[key])
+	end
+	-- Not `or DEFAULTS[key]`: a stored 0 is a real choice here (no panel at all),
+	-- and `or` would quietly hand it back the shipped value every login.
+	for _, key in ipairs({ "hudBackgroundAlpha", "timelineBackgroundAlpha" }) do
+		if d[key] == nil then d[key] = DEFAULTS[key] end
+		d[key] = ns.ClampAlpha(d[key])
 	end
 	d.markers = d.markers or {}
 	for _, q in ipairs(ns.QUADRANTS) do

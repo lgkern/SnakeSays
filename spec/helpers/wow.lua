@@ -91,7 +91,7 @@ local stubbed = {
 	"RegisterForDrag", "RegisterForClicks", "SetHitRectInsets", "SetClipsChildren",
 	"SetHighlightTexture", "SetNormalTexture", "SetPushedTexture", "SetDisabledTexture",
 	"SetBackdrop", "SetBackdropColor", "SetBackdropBorderColor",
-	"SetTexture", "SetAtlas", "SetTexCoord", "SetColorTexture",
+	"SetTexture", "SetAtlas", "SetTexCoord",
 	"SetDrawLayer", "SetBlendMode", "SetDesaturated", "SetGradient", "SetMask",
 	"SetJustifyH", "SetJustifyV", "SetShadowOffset", "SetShadowColor",
 	"SetFont", "SetSpacing", "SetWordWrap", "SetNonSpaceWrap", "SetMaxLines",
@@ -168,6 +168,18 @@ function frameProto:GetFont() return "Fonts\\FRIZQT__.TTF", 12, "" end
 function frameProto:SetTextColor(r, g, b, a) self._textColor = { r, g, b, a } end
 function frameProto:GetTextColor()
 	local c = self._textColor or { 1, 1, 1, 1 }
+	return c[1], c[2], c[3], c[4]
+end
+
+-- Recorded rather than dropped: the flat colour a texture is filled with is a
+-- setting the player can change (window backgrounds), so a test has to be able
+-- to read it back.
+function frameProto:SetColorTexture(r, g, b, a)
+	self._colorTexture = { r, g, b, a or 1 }
+	return self
+end
+function frameProto:GetColorTexture()
+	local c = self._colorTexture or { 0, 0, 0, 0 }
 	return c[1], c[2], c[3], c[4]
 end
 

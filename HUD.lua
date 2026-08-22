@@ -60,6 +60,7 @@ local RADIUS   = CIRCLE / 2 * (125 / ART_HALF)   -- outer edge of the paint
 local HUB      = CIRCLE / 2 * (18 / ART_HALF)    -- the hole in the middle
 
 local frame, circle, row, board
+local background       -- the dark panel behind everything; its alpha is a setting
 local buttons = {}     -- dir -> { wedge, icon, colour } for one direction
 local seqIcons = {}    -- pooled sequence-row textures
 local hovered          -- dir currently lit by the cursor, nil when it is away
@@ -314,9 +315,9 @@ local function build()
 	frame:SetClampedToScreen(true)
 	frame:SetFrameStrata("MEDIUM")
 
-	local bg = frame:CreateTexture(nil, "BACKGROUND")
-	bg:SetAllPoints(frame)
-	bg:SetColorTexture(0, 0, 0, 0.35)
+	background = frame:CreateTexture(nil, "BACKGROUND")
+	background:SetAllPoints(frame)
+	HUD.ApplyBackgroundAlpha()
 
 	buildMover()
 
@@ -421,6 +422,9 @@ end
 -- input at all. Reported by `/ss status`, because "I clicked it and nothing
 -- happened" is answered by something covering it far more often than by the
 -- click handler being wrong -- and the two are indistinguishable from the chair.
+-- The panel texture itself, so a test can read the colour it was filled with.
+function HUD.GetBackground() return background end
+
 function HUD.Describe()
 	if not frame then return "not built" end
 	return ("strata=%s level=%d mouse=%s board-mouse=%s board-enabled=%s"):format(
@@ -436,6 +440,14 @@ end
 function HUD.ApplyScale()
 	if not frame then return end
 	frame:SetScale(ns.GetHUDScale())
+end
+
+-- How solid the panel behind the board is. Re-coloured rather than faded with
+-- SetAlpha: the texture is the only thing that should thin out, and fading the
+-- frame would take the wedges and the icons with it.
+function HUD.ApplyBackgroundAlpha()
+	if not background then return end
+	background:SetColorTexture(0, 0, 0, ns.GetHUDBackgroundAlpha())
 end
 
 function HUD.ApplyLock()

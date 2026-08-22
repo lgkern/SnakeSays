@@ -43,6 +43,7 @@ local volumeSlider, volumeValue
 local voiceDropdown       -- nil on a client with no menu API (see buildVoicePicker)
 local dbmHint             -- says whether DBM can actually answer right now
 local scaleSliders = {}   -- the three window-size sliders, refreshed together
+local alphaSliders = {}   -- the two background-transparency sliders, likewise
 local capture             -- fullscreen key-capture overlay (created on demand)
 local pendingButton       -- the key box whose binding we're setting
 
@@ -245,6 +246,45 @@ local function buildScaleSlider(label, x, y, getter, setter)
 	slider.getter = getter
 	slider.valueText = value
 	scaleSliders[#scaleSliders + 1] = slider
+	return slider
+end
+
+-- ---------------------------------------------------------------------------
+-- Background transparency
+--
+-- One slider per window, reading as the alpha the panel behind it is drawn
+-- with: 0.00 leaves the window floating on the scene, 1.00 makes a solid black
+-- panel of it. Shown to two decimals because that is the number being set --
+-- percentages would suggest a size, which the sliders above already are.
+-- ---------------------------------------------------------------------------
+
+local ALPHA_STEP = 0.05
+
+local function buildAlphaSlider(label, x, y, getter, setter)
+	local slider = CreateFrame("Slider", nil, panel, "OptionsSliderTemplate")
+	slider:SetWidth(160)
+	slider:SetPoint("TOPLEFT", panel, "TOPLEFT", x, y)
+	slider:SetMinMaxValues(0, 1)
+	slider:SetValueStep(ALPHA_STEP)
+	slider:SetObeyStepOnDrag(true)
+	if slider.Low then slider.Low:SetText("0.00") end
+	if slider.High then slider.High:SetText("1.00") end
+	if slider.Text then slider.Text:SetText(label) end
+
+	local value = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	value:SetPoint("LEFT", slider, "RIGHT", 14, 0)
+
+	slider:SetScript("OnValueChanged", function(_, v)
+		-- Snapped here as well as by the slider: OnValueChanged also fires from
+		-- Refresh's SetValue, which is handed a stored value off any step.
+		local snapped = math.floor(v / ALPHA_STEP + 0.5) * ALPHA_STEP
+		setter(snapped)
+		value:SetText(string.format("%.2f", snapped))
+	end)
+
+	slider.getter = getter
+	slider.valueText = value
+	alphaSliders[#alphaSliders + 1] = slider
 	return slider
 end
 
@@ -614,11 +654,27 @@ local function buildPanel()
 	syncHint:SetWidth(ANNOUNCE_X - LEFT - 38)
 	syncHint:SetJustifyH("LEFT")
 
+	-- Visual settings, at the foot of the left column: how solid the dark panel
+	-- behind each window is drawn. Kept away from the size sliders on the right
+	-- because those change where the windows sit on screen and these do not.
+	local visualHeading = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	visualHeading:SetPoint("TOPLEFT", panel, "TOPLEFT", LEFT, y - 232)
+	visualHeading:SetText("Visual Settings")
+
+	local alphaLabel = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	alphaLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", LEFT + 24, y - 258)
+	alphaLabel:SetText("Background Transparency")
+
+	buildAlphaSlider("HUD", LEFT + 28, y - 290,
+		ns.GetHUDBackgroundAlpha, ns.SetHUDBackgroundAlpha)
+	buildAlphaSlider("Timeline", LEFT + 28, y - 328,
+		ns.GetTimelineBackgroundAlpha, ns.SetTimelineBackgroundAlpha)
+
 	local announceBottom = buildAnnounceColumn()
 
 	-- However tall the two columns came out. Measured rather than written down,
 	-- so a row added to either one scrolls instead of falling off the end.
-	panel:SetHeight(math.abs(math.min(y - 230, announceBottom)))
+	panel:SetHeight(math.abs(math.min(y - 366, announceBottom)))
 
 	container:SetScript("OnShow", function()
 		container.SyncToCanvas()
@@ -667,6 +723,12 @@ function Options.Refresh()
 		local scale = slider.getter()
 		slider:SetValue(scale)                                     -- fires OnValueChanged
 		slider.valueText:SetText(math.floor(scale * 100 + 0.5) .. "%")
+	end
+
+	for _, slider in ipairs(alphaSliders) do
+		local alpha = slider.getter()
+		slider:SetValue(alpha)                                     -- fires OnValueChanged
+		slider.valueText:SetText(string.format("%.2f", alpha))
 	end
 
 	-- Which voice is doing the calling, and whether the one that was asked for can
