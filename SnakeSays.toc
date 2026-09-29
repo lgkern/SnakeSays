@@ -1,4 +1,4 @@
-## Interface: 120007, 120100
+## Interface: 120007, 120100, 120105
 ## Title: SnakeSays
 ## Notes: Simon-Says HUD for Azta'rec: you tap the safe quadrants, it calls them back on the boss' own timing.
 ## Author: Lucas
